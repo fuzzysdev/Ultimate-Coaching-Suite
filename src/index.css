@@ -1,0 +1,44 @@
+:root {
+  --bg: #0f1117;
+  --surface: #181c26;
+  --surface2: #1f2435;
+  --border: #2a2f42;
+  --accent: #00e5a0;
+  --accent-dim: rgba(0,229,160,0.12);
+  --cut: #ff4d6d;
+  --cut-dim: rgba(255,77,109,0.12);
+  --text: #e8eaf0;
+  --text-muted: #7a8099;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Barlow', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+html, body, #root { height: 100%; }
+
+button { cursor: pointer; font-family: 'Barlow', sans-serif; }
+
+input, select {
+  font-family: 'Barlow', sans-serif;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 15px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+
+input:focus, select:focus { border-color: var(--accent); }
+
+select option { background: var(--surface); }
