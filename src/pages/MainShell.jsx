@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import InviteModal from '../components/InviteModal'
+import InviteModal from '../Components/InviteModal'
 import RostersPage from './RostersPage'
 import TryoutsPage from './TryoutsPage'
 import PlaceholderPage from './PlaceholderPage'
