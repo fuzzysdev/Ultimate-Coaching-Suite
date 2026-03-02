@@ -18,7 +18,7 @@ function RosterPage({ roster, onBack }) {
     try {
       setLoading(true)
       const { data, error } = await supabase
-        .from('players').select('id, name, grade, gender, created_at')
+        .from('players').select('id, name, grade, gender, position, created_at')
         .eq('roster_id', roster.id).order('name', { ascending: true })
       if (error) throw error
       setPlayers(data || [])
@@ -34,6 +34,7 @@ function RosterPage({ roster, onBack }) {
       name: playerData.name,
       grade: playerData.grade,
       gender: playerData.gender,
+      position: playerData.position || null,
       roster_id: roster.id
     })
     if (error) throw error
@@ -45,7 +46,8 @@ function RosterPage({ roster, onBack }) {
     const { error } = await supabase.from('players').update({
       name: playerData.name,
       grade: playerData.grade,
-      gender: playerData.gender
+      gender: playerData.gender,
+      position: playerData.position || null,
     }).eq('id', editingPlayer.id)
     if (error) throw error
     setEditingPlayer(null)
@@ -130,7 +132,7 @@ function RosterPage({ roster, onBack }) {
           <table style={s.table}>
             <thead>
               <tr>
-                {['Name', 'Grade', 'Gender', ''].map(h => (
+                {['Name', 'Grade', 'Gender', 'Position', ''].map(h => (
                   <th key={h} style={{ ...s.th, ...(h === '' ? { textAlign: 'right' } : {}) }}>{h}</th>
                 ))}
               </tr>
@@ -144,10 +146,17 @@ function RosterPage({ roster, onBack }) {
                     {player.gender ? (
                       <span style={{
                         ...s.badge,
-                        background: player.gender === 'Male' ? 'rgba(77,159,255,0.15)' : player.gender === 'Female' ? 'rgba(255,128,200,0.15)' : 'rgba(0,229,160,0.1)',
-                        color: player.gender === 'Male' ? '#4d9fff' : player.gender === 'Female' ? '#ff80c8' : '#00e5a0'
+                        background: player.gender === 'Male' ? 'rgba(77,159,255,0.15)' : 'rgba(255,128,200,0.15)',
+                        color: player.gender === 'Male' ? '#4d9fff' : '#ff80c8'
                       }}>
                         {player.gender}
+                      </span>
+                    ) : <span style={s.muted}>—</span>}
+                  </td>
+                  <td style={s.td}>
+                    {player.position ? (
+                      <span style={{ ...s.badge, background: 'rgba(120,100,255,0.15)', color: '#a89aff' }}>
+                        {{ h: 'Handler', c: 'Cutter', b: 'Hybrid', e: 'Either' }[player.position] || player.position}
                       </span>
                     ) : <span style={s.muted}>—</span>}
                   </td>

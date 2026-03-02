@@ -1,17 +1,29 @@
 import React, { useState, useEffect } from 'react'
 
 const GRADES = ['6th', '7th', '8th', '9th', '10th', '11th', '12th', 'College', 'Adult']
-const GENDERS = ['Female', 'Male', 'Non-binary', 'Prefer not to say']
+const GENDERS = ['Female', 'Male']
+const POSITIONS = [
+  { value: 'h', label: 'Handler' },
+  { value: 'c', label: 'Cutter' },
+  { value: 'b', label: 'Hybrid' },
+  { value: 'e', label: 'Either' },
+]
 
 function PlayerModal({ player, onSave, onClose }) {
   const [name, setName] = useState('')
   const [grade, setGrade] = useState('')
   const [gender, setGender] = useState('')
+  const [position, setPosition] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    if (player) { setName(player.name); setGrade(player.grade || ''); setGender(player.gender || '') }
+    if (player) {
+      setName(player.name)
+      setGrade(player.grade || '')
+      setGender(player.gender || '')
+      setPosition(player.position || '')
+    }
   }, [player])
 
   const handleSubmit = async (e) => {
@@ -20,7 +32,7 @@ function PlayerModal({ player, onSave, onClose }) {
     setError(null)
     setSaving(true)
     try {
-      await onSave({ name: name.trim(), grade, gender })
+      await onSave({ name: name.trim(), grade, gender, position })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -59,6 +71,13 @@ function PlayerModal({ player, onSave, onClose }) {
                 {GENDERS.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
             </div>
+          </div>
+          <div style={s.field}>
+            <label style={s.label}>Position <span style={{ color: '#4a5068', fontWeight: 400 }}>(optional)</span></label>
+            <select value={position} onChange={e => setPosition(e.target.value)}>
+              <option value="">-- Select --</option>
+              {POSITIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
           </div>
           <button type="submit" disabled={saving} style={s.saveBtn}>
             {saving ? 'Saving...' : player ? 'Save Changes' : 'Add Player'}
