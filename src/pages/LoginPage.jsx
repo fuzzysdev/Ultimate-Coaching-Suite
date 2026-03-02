@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [isSignUp, setIsSignUp] = useState(false)
+  const [mode, setMode] = useState('signin') // 'signin' | 'signup' | 'forgot'
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState(null)
 
@@ -13,7 +13,7 @@ function LoginPage() {
     setMessage(null)
     setLoading(true)
     try {
-      if (isSignUp) {
+      if (mode === 'signup') {
         const { error } = await supabase.auth.signUp({ email, password })
         if (error) throw error
         setMessage({ type: 'success', text: 'Check your email to confirm your account.' })
@@ -28,12 +28,80 @@ function LoginPage() {
     }
   }
 
+  const handleForgotPassword = async (e) => {
+    e.preventDefault()
+    setMessage(null)
+    setLoading(true)
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin
+      })
+      if (error) throw error
+      setMessage({ type: 'success', text: 'Check your email for a password reset link.' })
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const switchMode = (newMode) => {
+    setMode(newMode)
+    setMessage(null)
+  }
+
   const s = styles
+
+  if (mode === 'forgot') {
+    return (
+      <div style={s.container}>
+        <div style={s.card}>
+          <h1 style={s.title}>Ultimate Coaching<br /><span style={s.titleAccent}>Suite</span></h1>
+          <p style={s.subtitle}>Reset your password</p>
+
+          {message && (
+            <div style={{
+              ...s.message,
+              background: message.type === 'error' ? 'rgba(255,77,109,0.1)' : 'rgba(0,229,160,0.1)',
+              borderColor: message.type === 'error' ? '#ff4d6d' : '#00e5a0',
+              color: message.type === 'error' ? '#ff4d6d' : '#00e5a0'
+            }}>
+              {message.text}
+            </div>
+          )}
+
+          <form onSubmit={handleForgotPassword} style={s.form}>
+            <div style={s.field}>
+              <label style={s.label}>Email</label>
+              <input
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                autoFocus
+                required
+              />
+            </div>
+            <button type="submit" disabled={loading} style={s.button}>
+              {loading ? 'Sending...' : 'Send Reset Link'}
+            </button>
+          </form>
+
+          <div style={s.toggle}>
+            <button onClick={() => switchMode('signin')} style={s.link}>
+              ← Back to Sign In
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={s.container}>
       <div style={s.card}>
         <h1 style={s.title}>Ultimate Coaching<br /><span style={s.titleAccent}>Suite</span></h1>
-        <p style={s.subtitle}>{isSignUp ? 'Create your account' : 'Sign in to continue'}</p>
+        <p style={s.subtitle}>{mode === 'signup' ? 'Create your account' : 'Sign in to continue'}</p>
 
         {message && (
           <div style={{
@@ -70,16 +138,24 @@ function LoginPage() {
           </div>
 
           <button type="submit" disabled={loading} style={s.button}>
-            {loading ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
+            {loading ? 'Please wait...' : mode === 'signup' ? 'Create Account' : 'Sign In'}
           </button>
         </form>
 
+        {mode === 'signin' && (
+          <div style={{ textAlign: 'center', marginTop: '0.75rem' }}>
+            <button onClick={() => switchMode('forgot')} style={s.link}>
+              Forgot password?
+            </button>
+          </div>
+        )}
+
         <div style={s.toggle}>
           <span style={{ color: '#7a8099' }}>
-            {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
+            {mode === 'signup' ? 'Already have an account? ' : "Don't have an account? "}
           </span>
-          <button onClick={() => setIsSignUp(!isSignUp)} style={s.link}>
-            {isSignUp ? 'Sign In' : 'Sign Up'}
+          <button onClick={() => switchMode(mode === 'signup' ? 'signin' : 'signup')} style={s.link}>
+            {mode === 'signup' ? 'Sign In' : 'Sign Up'}
           </button>
         </div>
       </div>

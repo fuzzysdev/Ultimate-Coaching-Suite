@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
 import LoginPage from './pages/LoginPage'
 import MainShell from './pages/MainShell'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 
 function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [recoveryMode, setRecoveryMode] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -13,7 +15,14 @@ function App() {
       setLoading(false)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => setSession(session)
+      (event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          setRecoveryMode(true)
+        } else if (event === 'USER_UPDATED') {
+          setRecoveryMode(false)
+        }
+        setSession(session)
+      }
     )
     return () => subscription?.unsubscribe()
   }, [])
@@ -31,6 +40,7 @@ function App() {
     )
   }
 
+  if (recoveryMode) return <ResetPasswordPage />
   return session ? <MainShell session={session} /> : <LoginPage />
 }
 

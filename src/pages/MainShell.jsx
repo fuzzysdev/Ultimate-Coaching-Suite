@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import InviteModal from '../Components/InviteModal'
+import CreateOrgModal from '../Components/CreateOrgModal'
 import RostersPage from './RostersPage'
 import TryoutsPage from './TryoutsPage'
 import PlaceholderPage from './PlaceholderPage'
@@ -21,6 +22,7 @@ function MainShell({ session }) {
   const [selectedRoster, setSelectedRoster] = useState(null)
   const [currentApp, setCurrentApp] = useState('rosters')
   const [showInviteModal, setShowInviteModal] = useState(false)
+  const [showCreateOrgModal, setShowCreateOrgModal] = useState(false)
   const [joinedOrgName, setJoinedOrgName] = useState(null)
   const [loadingOrgs, setLoadingOrgs] = useState(true)
 
@@ -90,9 +92,14 @@ function MainShell({ session }) {
       return (
         <div style={styles.noOrg}>
           <p>You are not part of any organization yet.</p>
-          <button onClick={() => setShowInviteModal(true)} style={styles.joinBtn}>
-            Join an Organization
-          </button>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
+            <button onClick={() => setShowCreateOrgModal(true)} style={styles.joinBtn}>
+              + Create Organization
+            </button>
+            <button onClick={() => setShowInviteModal(true)} style={styles.joinBtnSecondary}>
+              Join with Invite Code
+            </button>
+          </div>
         </div>
       )
     }
@@ -125,6 +132,18 @@ function MainShell({ session }) {
           onJoined={(orgName) => {
             setShowInviteModal(false)
             setJoinedOrgName(orgName)
+            fetchOrganizations()
+            setTimeout(() => setJoinedOrgName(null), 3000)
+          }}
+        />
+      )}
+      {showCreateOrgModal && (
+        <CreateOrgModal
+          userId={session.user.id}
+          onClose={() => setShowCreateOrgModal(false)}
+          onCreated={(org) => {
+            setShowCreateOrgModal(false)
+            setJoinedOrgName(org.name)
             fetchOrganizations()
             setTimeout(() => setJoinedOrgName(null), 3000)
           }}
@@ -176,6 +195,13 @@ function MainShell({ session }) {
             </div>
           )}
 
+          <button
+            onClick={() => setShowCreateOrgModal(true)}
+            style={s.newOrgBtn}
+            title="Create a new organization"
+          >
+            + New Org
+          </button>
           <button
             onClick={() => setShowInviteModal(true)}
             style={s.inviteBtn}
@@ -252,6 +278,12 @@ const styles = {
     padding: '6px 10px', borderRadius: '6px', outline: 'none', cursor: 'pointer',
     width: 'auto'
   },
+  newOrgBtn: {
+    background: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.2)',
+    color: '#00e5a0', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '12px',
+    fontWeight: '800', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
+    textTransform: 'uppercase', letterSpacing: '0.5px'
+  },
   inviteBtn: {
     background: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.2)',
     color: '#00e5a0', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '12px',
@@ -290,6 +322,13 @@ const styles = {
   },
   joinBtn: {
     background: '#00e5a0', color: '#0f1117', border: 'none',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '14px',
+    fontWeight: '800', padding: '10px 24px', borderRadius: '7px',
+    textTransform: 'uppercase', cursor: 'pointer'
+  },
+  joinBtnSecondary: {
+    background: 'transparent', color: '#00e5a0',
+    border: '1px solid rgba(0,229,160,0.4)',
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: '14px',
     fontWeight: '800', padding: '10px 24px', borderRadius: '7px',
     textTransform: 'uppercase', cursor: 'pointer'
