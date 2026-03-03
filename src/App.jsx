@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase'
 import LoginPage from './pages/LoginPage'
 import MainShell from './pages/MainShell'
 import ResetPasswordPage from './pages/ResetPasswordPage'
+import SuperAdminPage from './pages/SuperAdminPage'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -38,6 +39,10 @@ function App() {
         Loading...
       </div>
     )
+  }
+
+  if (window.location.pathname === '/superadmin') {
+    return session ? <SuperAdminPage session={session} /> : <LoginPage />
   }
 
   if (recoveryMode) return <ResetPasswordPage />
