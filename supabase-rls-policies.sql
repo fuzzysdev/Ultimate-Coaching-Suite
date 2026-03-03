@@ -12,7 +12,8 @@
 -- =============================================================
 
 -- organizations
-DROP POLICY IF EXISTS "members_can_read_org" ON organizations;
+DROP POLICY IF EXISTS "members_can_read_org"    ON organizations;
+DROP POLICY IF EXISTS "authenticated_create_org" ON organizations;
 
 -- user_organizations
 DROP POLICY IF EXISTS "users_see_own_memberships" ON user_organizations;
@@ -83,6 +84,11 @@ $$;
 CREATE POLICY "members_can_read_org"
   ON organizations FOR SELECT
   USING (is_org_member(id));
+
+-- Any authenticated user can create an org (they are added as admin separately).
+CREATE POLICY "authenticated_create_org"
+  ON organizations FOR INSERT
+  WITH CHECK (auth.uid() IS NOT NULL);
 
 -- user_organizations
 CREATE POLICY "users_see_own_memberships"
