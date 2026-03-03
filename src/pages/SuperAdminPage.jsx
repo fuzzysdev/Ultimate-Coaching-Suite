@@ -28,11 +28,18 @@ function SuperAdminPage({ session }) {
   useEffect(() => { checkAccess() }, [])
 
   const checkAccess = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('super_admins')
       .select('user_id')
       .eq('user_id', session.user.id)
       .maybeSingle()
+    if (error) {
+      console.error('super_admins query error:', error)
+      setError(`Access check failed: ${error.message} (code: ${error.code})`)
+      setIsAdmin(false)
+      setLoading(false)
+      return
+    }
     if (!data) {
       setIsAdmin(false)
       setLoading(false)
@@ -152,6 +159,11 @@ function SuperAdminPage({ session }) {
         <div style={s.deniedCard}>
           <h1 style={s.deniedTitle}>Access Denied</h1>
           <p style={s.muted}>You do not have super admin privileges.</p>
+          {error && (
+            <p style={{ color: '#ff4d6d', fontSize: '12px', marginTop: '1rem', wordBreak: 'break-all', textAlign: 'left' }}>
+              {error}
+            </p>
+          )}
           <button onClick={() => { window.location.href = '/' }} style={s.backBtn}>
             ← Back to App
           </button>
