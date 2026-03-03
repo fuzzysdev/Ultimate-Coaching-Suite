@@ -21,7 +21,7 @@ function TryoutsPage({ org, session }) {
       setLoading(true)
       const { data, error } = await supabase
         .from('tryouts')
-        .select('id, name, date, created_at')
+        .select('id, name, date, created_at, rankings, cut_index, bubble_index')
         .eq('organization_id', org.id)
         .order('created_at', { ascending: false })
       if (error) throw error
