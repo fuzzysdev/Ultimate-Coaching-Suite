@@ -164,6 +164,10 @@ function SuperAdminPage({ session }) {
               {error}
             </p>
           )}
+          <p style={{ color: '#3a4055', fontSize: '11px', marginTop: '1.5rem', wordBreak: 'break-all', textAlign: 'left', fontFamily: 'monospace' }}>
+            Your session UUID:<br />
+            <span style={{ color: '#7a8099' }}>{session.user.id}</span>
+          </p>
           <button onClick={() => { window.location.href = '/' }} style={s.backBtn}>
             ← Back to App
           </button>
