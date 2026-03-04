@@ -5,6 +5,7 @@ import CreateOrgModal from '../Components/CreateOrgModal'
 import RostersPage from './RostersPage'
 import TryoutsPage from './TryoutsPage'
 import GameSheetPage from './GameSheetPage'
+import AttendancePage from './Attendance'
 import PlaceholderPage from './PlaceholderPage'
 
 const NAV_ITEMS = [
@@ -118,6 +119,8 @@ function MainShell({ session }) {
         return <TryoutsPage org={selectedOrg} session={session} />
       case 'gamesheet':
         return <GameSheetPage org={selectedOrg} roster={selectedRoster} />
+      case 'attendance':
+        return <AttendancePage org={selectedOrg} session={session} roster={selectedRoster} />
       default:
         return <PlaceholderPage appName={NAV_ITEMS.find(n => n.key === currentApp)?.label} />
     }
