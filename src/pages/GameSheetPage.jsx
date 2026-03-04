@@ -20,19 +20,52 @@ const MAX_TO  = 3
 
 const POS = { h: 'H', c: 'C', b: 'Hy', e: 'E' }
 
-// ─── Column background tint (applied to every cell in a column) ──────────────
-function colBg(colIdx, current) {
-  if (colIdx === current)  return 'rgba(0,229,160,0.06)'
-  if (colIdx < current)    return 'rgba(255,255,255,0.01)'
+// ─── Column background tint ───────────────────────────────────────────────────
+function colBg(colIdx, current, light = false) {
+  if (colIdx === current)  return light ? 'rgba(0,180,120,0.10)' : 'rgba(0,229,160,0.06)'
+  if (colIdx < current)    return light ? 'rgba(0,0,0,0.025)' : 'rgba(255,255,255,0.01)'
   return 'transparent'
 }
 
-// ─── Individual cell fill based on selection + column state ──────────────────
-function cellFill(selected, colIdx, current) {
+// ─── Individual cell fill ─────────────────────────────────────────────────────
+function cellFill(selected, colIdx, current, light = false) {
   if (!selected) return 'transparent'
-  if (colIdx < current)  return 'rgba(0,229,160,0.35)'   // completed
-  if (colIdx === current) return '#00e5a0'                // current
-  return 'rgba(0,229,160,0.18)'                          // planned (future)
+  if (colIdx < current)   return light ? 'rgba(0,160,110,0.45)' : 'rgba(0,229,160,0.35)'
+  if (colIdx === current) return light ? '#00c896' : '#00e5a0'
+  return light ? 'rgba(0,160,110,0.22)' : 'rgba(0,229,160,0.18)'
+}
+
+// ─── Grid theme ───────────────────────────────────────────────────────────────
+function buildTheme(light) {
+  return light ? {
+    gridBg:      '#f4f5f8',
+    nameBg:      '#ffffff',
+    headerBg:    '#eaecf2',
+    sectionBg:   'rgba(0,0,0,0.04)',
+    rowBorder:   '#dde0ea',
+    nameColor:   '#1a1d28',
+    injColor:    '#a06800',
+    posTagBg:    '#e0e3ef',
+    posTagColor: '#5060a0',
+    awayBg:      'rgba(100,110,140,0.15)',
+    awayColor:   '#7a8099',
+    ptNumColor:  (isCur) => isCur ? '#008060' : '#8090b0',
+    light:       true,
+  } : {
+    gridBg:      '#0f1117',
+    nameBg:      '#0f1117',
+    headerBg:    '#181c26',
+    sectionBg:   'rgba(0,0,0,0.4)',
+    rowBorder:   '#1a1e2a',
+    nameColor:   '#c8ccd8',
+    injColor:    '#c8a050',
+    posTagBg:    '#1f2435',
+    posTagColor: '#5a6280',
+    awayBg:      'rgba(74,80,104,0.35)',
+    awayColor:   '#7a8099',
+    ptNumColor:  (isCur) => isCur ? '#00e5a0' : '#4a5068',
+    light:       false,
+  }
 }
 
 export default function GameSheetPage({ org, roster }) {
@@ -43,11 +76,12 @@ export default function GameSheetPage({ org, roster }) {
   const [showSetup,      setShowSetup]      = useState(false)
   const [showEndDialog,  setShowEndDialog]  = useState(false)
   const [savingEnd,      setSavingEnd]      = useState(false)
-  const [points,         setPoints]         = useState([])   // completed points
-  const [lines,          setLines]          = useState({})   // { [ptIdx]: Set<id> }
+  const [points,         setPoints]         = useState([])
+  const [lines,          setLines]          = useState({})
   const [ourTO,          setOurTO]          = useState(0)
   const [theirTO,        setTheirTO]        = useState(0)
-  const [playerStatus,   setPlayerStatus]   = useState({}) // { [id]: 'away' | 'injured' }
+  const [playerStatus,   setPlayerStatus]   = useState({})
+  const [lightGrid,      setLightGrid]      = useState(false)
 
   const gridRef     = useRef(null)
   const scoreBarRef = useRef(null)
@@ -78,8 +112,9 @@ export default function GameSheetPage({ org, roster }) {
   const selF       = females.filter(p => curLine.has(p.id)).length
   const selM       = males.filter(p => curLine.has(p.id)).length
   const lineOK     = selF === fNeed && selM === mNeed
-  const totalCols  = Math.max(curIdx + 8, 15)
+  const totalCols  = Math.max(curIdx + 8, 30)
   const colIndices = Array.from({ length: totalCols }, (_, i) => i)
+  const gt         = buildTheme(lightGrid)
 
   const nextDir = () => {
     if (!setup) return ''
@@ -121,8 +156,8 @@ export default function GameSheetPage({ org, roster }) {
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const toggleCell = (playerId, ptIdx) => {
-    if (ptIdx < curIdx) return                   // completed point — locked
-    if (playerStatus[playerId]) return           // away or injured — skip
+    if (ptIdx < curIdx) return
+    if (playerStatus[playerId]) return
 
     const player = players.find(p => p.id === playerId)
     if (!player) return
@@ -132,7 +167,6 @@ export default function GameSheetPage({ org, roster }) {
     const need     = isMale ? (ptGender === 'm' ? 4 : 3) : (ptGender === 'f' ? 4 : 3)
     const ptLine   = lines[ptIdx] || new Set()
 
-    // Block adding if the gender slot is already full
     if (!ptLine.has(playerId)) {
       const group = isMale ? males : females
       const count = group.filter(p => ptLine.has(p.id)).length
@@ -146,8 +180,6 @@ export default function GameSheetPage({ org, roster }) {
     })
   }
 
-  // Cycle: active → away → injured → active
-  // Marking unavailable clears all their future-point selections
   const cycleStatus = (playerId) => {
     const cur = playerStatus[playerId]
     const next = !cur ? 'away' : cur === 'away' ? 'injured' : null
@@ -159,7 +191,6 @@ export default function GameSheetPage({ org, roster }) {
       return updated
     })
 
-    // Clear future selections when player becomes unavailable
     if (next) {
       setLines(prev => {
         const updated = { ...prev }
@@ -234,14 +265,14 @@ export default function GameSheetPage({ org, roster }) {
   }
 
   // ── Active game ────────────────────────────────────────────────────────────
-  const stickyName = (bg = '#0f1117') => ({
+  const stickyName = (bg = gt.nameBg) => ({
     width: NAME_W, minWidth: NAME_W, position: 'sticky', left: 0, zIndex: 4,
-    background: bg, flexShrink: 0,
+    background: lightGrid ? gt.nameBg : bg, flexShrink: 0,
   })
 
   const colCell = (colIdx, extra = {}) => ({
     width: COL_W, minWidth: COL_W, flexShrink: 0, textAlign: 'center',
-    background: colBg(colIdx, curIdx), ...extra
+    background: colBg(colIdx, curIdx, lightGrid), ...extra
   })
 
   return (
@@ -299,36 +330,47 @@ export default function GameSheetPage({ org, roster }) {
           ▲ They Scored
         </button>
         <button onClick={() => setShowEndDialog(true)} style={S.btnEnd}>End</button>
+        <button
+          onClick={() => setLightGrid(l => !l)}
+          style={S.btnLight}
+          title="Toggle grid light/dark mode"
+        >
+          {lightGrid ? '🌙' : '☀️'}
+        </button>
       </div>
 
       {/* ── Grid ── */}
       {loadingPlayers ? (
         <div style={S.loading}>Loading...</div>
       ) : (
-        <div style={S.gridWrap} ref={gridRef} onScroll={onGridScroll}>
+        <div style={{ ...S.gridWrap, background: gt.gridBg }} ref={gridRef} onScroll={onGridScroll}>
 
           {/* Pt # header row */}
-          <div style={{ ...S.row, position: 'sticky', top: 0, zIndex: 8, background: '#181c26' }}>
-            <div style={{ ...stickyName('#181c26'), height: HDR_H, display: 'flex', alignItems: 'center',
-              paddingLeft: 6, fontSize: 9, fontWeight: 700, letterSpacing: 1, color: '#4a5068',
+          <div style={{ ...S.row, position: 'sticky', top: 0, zIndex: 8, background: gt.headerBg }}>
+            <div style={{ ...stickyName(gt.headerBg), height: HDR_H, display: 'flex', alignItems: 'center',
+              paddingLeft: 6, fontSize: 9, fontWeight: 700, letterSpacing: 1,
+              color: lightGrid ? '#8090b0' : '#4a5068',
               textTransform: 'uppercase', fontFamily: "'Barlow Condensed', sans-serif" }}>
               PLAYER / PT
             </div>
             {colIndices.map(i => (
               <div key={i} style={{ ...colCell(i), height: HDR_H, lineHeight: HDR_H + 'px',
-                fontSize: 10, color: i === curIdx ? '#00e5a0' : '#4a5068',
+                fontSize: 10, color: gt.ptNumColor(i === curIdx),
                 fontWeight: i === curIdx ? 800 : 600,
                 fontFamily: "'Barlow Condensed', sans-serif",
-                borderBottom: i === curIdx ? '2px solid #00e5a0' : '2px solid transparent' }}>
+                borderBottom: i === curIdx
+                  ? `2px solid ${lightGrid ? '#00a878' : '#00e5a0'}`
+                  : '2px solid transparent' }}>
                 {i + 1}
               </div>
             ))}
           </div>
 
           {/* Gender row */}
-          <div style={{ ...S.row, position: 'sticky', top: HDR_H, zIndex: 8, background: '#181c26' }}>
-            <div style={{ ...stickyName('#181c26'), height: HDR_H, display: 'flex', alignItems: 'center',
-              paddingLeft: 6, fontSize: 9, fontWeight: 700, letterSpacing: 1, color: '#4a5068',
+          <div style={{ ...S.row, position: 'sticky', top: HDR_H, zIndex: 8, background: gt.headerBg }}>
+            <div style={{ ...stickyName(gt.headerBg), height: HDR_H, display: 'flex', alignItems: 'center',
+              paddingLeft: 6, fontSize: 9, fontWeight: 700, letterSpacing: 1,
+              color: lightGrid ? '#8090b0' : '#4a5068',
               textTransform: 'uppercase', fontFamily: "'Barlow Condensed', sans-serif" }}>
               GENDER
             </div>
@@ -346,27 +388,33 @@ export default function GameSheetPage({ org, roster }) {
           </div>
 
           {/* ── Female section ── */}
-          <SectionRow label="FEMALE" color="#ff80c8" stickyName={stickyName} colIndices={colIndices} colBgFn={colBg} curIdx={curIdx} secH={SEC_H} />
+          <SectionRow label="FEMALE" color="#ff80c8" stickyName={stickyName} colIndices={colIndices}
+            colBgFn={(i, cur) => colBg(i, cur, lightGrid)} curIdx={curIdx} secH={SEC_H} gt={gt} />
           {females.map(p => (
             <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
               stickyName={stickyName} colCell={colCell} onToggle={toggleCell} rowH={ROW_H}
-              status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)} />
+              status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
+              gt={gt} lightGrid={lightGrid} />
           ))}
-          {females.length === 0 && <EmptySection label="No female players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} />}
+          {females.length === 0 && <EmptySection label="No female players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} gt={gt} />}
 
           {/* ── Male section ── */}
-          <SectionRow label="MALE" color="#4d9fff" stickyName={stickyName} colIndices={colIndices} colBgFn={colBg} curIdx={curIdx} secH={SEC_H} />
+          <SectionRow label="MALE" color="#4d9fff" stickyName={stickyName} colIndices={colIndices}
+            colBgFn={(i, cur) => colBg(i, cur, lightGrid)} curIdx={curIdx} secH={SEC_H} gt={gt} />
           {males.map(p => (
             <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
               stickyName={stickyName} colCell={colCell} onToggle={toggleCell} rowH={ROW_H}
-              status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)} />
+              status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
+              gt={gt} lightGrid={lightGrid} />
           ))}
-          {males.length === 0 && <EmptySection label="No male players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} />}
+          {males.length === 0 && <EmptySection label="No male players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} gt={gt} />}
 
           {/* ── Score rows ── */}
-          <div style={{ ...S.row, borderTop: '1px solid #2a2f42', marginTop: 2 }}>
-            <div style={{ ...stickyName('#181c26'), height: SCORE_H, display: 'flex', alignItems: 'center',
-              paddingLeft: 6, fontSize: 10, fontWeight: 800, color: '#00e5a0',
+          <div style={{ ...S.row, borderTop: `1px solid ${lightGrid ? '#c8ccd8' : '#2a2f42'}`, marginTop: 2 }}>
+            <div style={{ ...stickyName(lightGrid ? gt.headerBg : '#181c26'), height: SCORE_H,
+              display: 'flex', alignItems: 'center',
+              paddingLeft: 6, fontSize: 10, fontWeight: 800,
+              color: lightGrid ? '#008060' : '#00e5a0',
               fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5 }}>
               US
             </div>
@@ -375,7 +423,10 @@ export default function GameSheetPage({ org, roster }) {
               return (
                 <div key={i} style={{ ...colCell(i), height: SCORE_H, lineHeight: SCORE_H + 'px',
                   fontSize: 11, fontWeight: pt?.scoredBy === 'us' ? 800 : 500,
-                  color: pt?.scoredBy === 'us' ? '#00e5a0' : pt ? '#e8eaf0' : '#2a2f42',
+                  color: pt?.scoredBy === 'us'
+                    ? (lightGrid ? '#008060' : '#00e5a0')
+                    : pt ? (lightGrid ? '#1a1d28' : '#e8eaf0')
+                    : (lightGrid ? '#c0c4d0' : '#2a2f42'),
                   fontFamily: "'Barlow Condensed', sans-serif" }}>
                   {pt ? pt.ourScoreAfter : ''}
                 </div>
@@ -383,7 +434,8 @@ export default function GameSheetPage({ org, roster }) {
             })}
           </div>
           <div style={S.row}>
-            <div style={{ ...stickyName('#181c26'), height: SCORE_H, display: 'flex', alignItems: 'center',
+            <div style={{ ...stickyName(lightGrid ? gt.headerBg : '#181c26'), height: SCORE_H,
+              display: 'flex', alignItems: 'center',
               paddingLeft: 6, fontSize: 10, fontWeight: 800, color: '#ff4d6d',
               fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5 }}>
               {setup.opponent.slice(0, 4).toUpperCase()}
@@ -393,7 +445,9 @@ export default function GameSheetPage({ org, roster }) {
               return (
                 <div key={i} style={{ ...colCell(i), height: SCORE_H, lineHeight: SCORE_H + 'px',
                   fontSize: 11, fontWeight: pt?.scoredBy === 'them' ? 800 : 500,
-                  color: pt?.scoredBy === 'them' ? '#ff4d6d' : pt ? '#e8eaf0' : '#2a2f42',
+                  color: pt?.scoredBy === 'them' ? '#ff4d6d'
+                    : pt ? (lightGrid ? '#1a1d28' : '#e8eaf0')
+                    : (lightGrid ? '#c0c4d0' : '#2a2f42'),
                   fontFamily: "'Barlow Condensed', sans-serif" }}>
                   {pt ? pt.theirScoreAfter : ''}
                 </div>
@@ -430,10 +484,10 @@ export default function GameSheetPage({ org, roster }) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function SectionRow({ label, color, stickyName, colIndices, colBgFn, curIdx, secH }) {
+function SectionRow({ label, color, stickyName, colIndices, colBgFn, curIdx, secH, gt }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center' }}>
-      <div style={{ ...stickyName('rgba(0,0,0,0.4)'), height: secH, display: 'flex', alignItems: 'center',
+      <div style={{ ...stickyName(gt.sectionBg), height: secH, display: 'flex', alignItems: 'center',
         paddingLeft: 6, fontSize: 9, fontWeight: 800, color, letterSpacing: 1,
         textTransform: 'uppercase', fontFamily: "'Barlow Condensed', sans-serif",
         borderTop: `1px solid ${color}22`, borderBottom: `1px solid ${color}22` }}>
@@ -447,24 +501,23 @@ function SectionRow({ label, color, stickyName, colIndices, colBgFn, curIdx, sec
   )
 }
 
-function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, onToggle, rowH, status, onStatusChange }) {
+function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, onToggle, rowH, status, onStatusChange, gt, lightGrid }) {
   const unavailable = !!status
   const borderColor = status === 'injured' ? '#f0a500' : status === 'away' ? '#4a5068' : 'transparent'
   const rowOpacity  = status === 'away' ? 0.28 : status === 'injured' ? 0.45 : 1
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', opacity: rowOpacity }}>
-      {/* Name cell — tap to cycle status */}
       <div
         onClick={onStatusChange}
         title={!status ? 'Tap to mark Away' : status === 'away' ? 'Tap to mark Injured' : 'Tap to mark Active'}
-        style={{ ...stickyName('#0f1117'), height: rowH, display: 'flex', alignItems: 'center',
-          paddingLeft: 4, gap: 3, borderBottom: '1px solid #1a1e2a',
+        style={{ ...stickyName(gt.nameBg), height: rowH, display: 'flex', alignItems: 'center',
+          paddingLeft: 4, gap: 3, borderBottom: `1px solid ${gt.rowBorder}`,
           borderLeft: `3px solid ${borderColor}`,
           overflow: 'hidden', cursor: 'pointer', boxSizing: 'border-box' }}
       >
         <span style={{ fontSize: 12, fontWeight: 700,
-          color: status === 'injured' ? '#c8a050' : '#c8ccd8',
+          color: status === 'injured' ? gt.injColor : gt.nameColor,
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           maxWidth: status ? 46 : 54,
           textDecoration: status === 'away' ? 'line-through' : 'none',
@@ -474,12 +527,12 @@ function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, onT
         {status ? (
           <span style={{ fontSize: 8, fontWeight: 800, flexShrink: 0, padding: '1px 3px', borderRadius: 3,
             fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5,
-            background: status === 'away' ? 'rgba(74,80,104,0.35)' : 'rgba(240,165,0,0.2)',
-            color: status === 'away' ? '#7a8099' : '#f0a500' }}>
+            background: status === 'away' ? gt.awayBg : 'rgba(240,165,0,0.2)',
+            color: status === 'away' ? gt.awayColor : '#f0a500' }}>
             {status === 'away' ? 'AWAY' : 'INJ'}
           </span>
         ) : player.position ? (
-          <span style={{ fontSize: 9, fontWeight: 700, background: '#1f2435', color: '#5a6280',
+          <span style={{ fontSize: 9, fontWeight: 700, background: gt.posTagBg, color: gt.posTagColor,
             padding: '1px 3px', borderRadius: 3, flexShrink: 0,
             fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5 }}>
             {POS[player.position] || player.position}
@@ -487,21 +540,20 @@ function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, onT
         ) : null}
       </div>
 
-      {/* Point cells */}
       {colIndices.map(i => {
         const selected = lines[i]?.has(player.id) || false
         const isPast   = i < curIdx
         return (
           <div key={i}
             onClick={() => !unavailable && onToggle(player.id, i)}
-            style={{ ...colCell(i), height: rowH, borderBottom: '1px solid #1a1e2a',
+            style={{ ...colCell(i), height: rowH, borderBottom: `1px solid ${gt.rowBorder}`,
               cursor: unavailable || isPast ? 'default' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {selected && (
               <div style={{
                 width: 14, height: 14, borderRadius: 3,
-                background: cellFill(true, i, curIdx),
-                border: i > curIdx ? '1px dashed rgba(0,229,160,0.4)' : 'none',
+                background: cellFill(true, i, curIdx, lightGrid),
+                border: i > curIdx ? `1px dashed ${lightGrid ? 'rgba(0,160,110,0.4)' : 'rgba(0,229,160,0.4)'}` : 'none',
               }} />
             )}
           </div>
@@ -511,11 +563,12 @@ function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, onT
   )
 }
 
-function EmptySection({ label, stickyName, colIndices, colCell, rowH }) {
+function EmptySection({ label, stickyName, colIndices, colCell, rowH, gt }) {
   return (
     <div style={{ display: 'flex' }}>
-      <div style={{ ...stickyName('#0f1117'), height: rowH, display: 'flex', alignItems: 'center',
-        paddingLeft: 6, fontSize: 10, color: '#3a3f52', fontFamily: "'Barlow Condensed', sans-serif" }}>
+      <div style={{ ...stickyName(gt.nameBg), height: rowH, display: 'flex', alignItems: 'center',
+        paddingLeft: 6, fontSize: 10, color: gt.light ? '#a0a8c0' : '#3a3f52',
+        fontFamily: "'Barlow Condensed', sans-serif" }}>
         {label}
       </div>
       {colIndices.map(i => <div key={i} style={{ ...colCell(i), height: rowH }} />)}
@@ -603,6 +656,11 @@ const S = {
     borderRadius: 7, fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13,
     fontWeight: 700, padding: '8px 0', textTransform: 'uppercase', cursor: 'pointer'
   },
+  btnLight: {
+    background: 'transparent', border: '1px solid #2a2f42', borderRadius: 7,
+    fontSize: 16, padding: '4px 8px', cursor: 'pointer', lineHeight: 1,
+    flexShrink: 0
+  },
 
   loading: {
     padding: '2rem', textAlign: 'center', color: '#7a8099',
@@ -611,8 +669,7 @@ const S = {
 
   // Grid
   gridWrap: {
-    flex: 1, overflowX: 'auto', overflowY: 'auto',
-    background: '#0f1117', minHeight: 0
+    flex: 1, overflowX: 'auto', overflowY: 'auto', minHeight: 0
   },
   row: { display: 'flex', alignItems: 'stretch' },
 
