@@ -42,7 +42,7 @@ function buildTheme(light) {
     nameBg:      '#ffffff',
     headerBg:    '#eaecf2',
     sectionBg:   'rgba(0,0,0,0.04)',
-    rowBorder:   '#dde0ea',
+    rowBorder:   '#b8bdd0',
     nameColor:   '#1a1d28',
     injColor:    '#a06800',
     posTagBg:    '#e0e3ef',
@@ -56,7 +56,7 @@ function buildTheme(light) {
     nameBg:      '#0f1117',
     headerBg:    '#181c26',
     sectionBg:   'rgba(0,0,0,0.4)',
-    rowBorder:   '#1a1e2a',
+    rowBorder:   '#252a3a',
     nameColor:   '#c8ccd8',
     injColor:    '#c8a050',
     posTagBg:    '#1f2435',
@@ -485,17 +485,19 @@ export default function GameSheetPage({ org, roster }) {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function SectionRow({ label, color, stickyName, colIndices, colBgFn, curIdx, secH, gt }) {
+  const sectionTint = `${color}14`  // subtle color wash behind the whole row
   return (
-    <div style={{ display: 'flex', alignItems: 'center' }}>
-      <div style={{ ...stickyName(gt.sectionBg), height: secH, display: 'flex', alignItems: 'center',
+    <div style={{ display: 'flex', alignItems: 'center', marginTop: 4 }}>
+      <div style={{ ...stickyName(sectionTint), height: secH, display: 'flex', alignItems: 'center',
         paddingLeft: 6, fontSize: 9, fontWeight: 800, color, letterSpacing: 1,
         textTransform: 'uppercase', fontFamily: "'Barlow Condensed', sans-serif",
-        borderTop: `1px solid ${color}22`, borderBottom: `1px solid ${color}22` }}>
+        borderTop: `2px solid ${color}88`, borderBottom: `1px solid ${color}44` }}>
         {label}
       </div>
       {colIndices.map(i => (
         <div key={i} style={{ width: COL_W, minWidth: COL_W, flexShrink: 0, height: secH,
-          background: colBgFn(i, curIdx), borderTop: `1px solid ${color}22`, borderBottom: `1px solid ${color}22` }} />
+          background: `${colBgFn(i, curIdx) === 'transparent' ? sectionTint : colBgFn(i, curIdx)}`,
+          borderTop: `2px solid ${color}88`, borderBottom: `1px solid ${color}44` }} />
       ))}
     </div>
   )
