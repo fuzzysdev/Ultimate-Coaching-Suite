@@ -190,20 +190,6 @@ export default function GameSheetPage({ org, roster }) {
       else delete updated[playerId]
       return updated
     })
-
-    if (next) {
-      setLines(prev => {
-        const updated = { ...prev }
-        for (const key in updated) {
-          if (parseInt(key) >= curIdx) {
-            const s = new Set(updated[key])
-            s.delete(playerId)
-            updated[key] = s
-          }
-        }
-        return updated
-      })
-    }
   }
 
   const recordPoint = async (scoredBy) => {
