@@ -98,6 +98,9 @@ function SuperAdminPage({ session }) {
     const org = deletingOrg
     setDeletingOrg(null)
     setError(null)
+    // Delete dependent rows first (foreign keys without CASCADE)
+    await supabase.from('org_invites').delete().eq('organization_id', org.id)
+    await supabase.from('user_organizations').delete().eq('organization_id', org.id)
     const { error } = await supabase.from('organizations').delete().eq('id', org.id)
     if (error) return setError(error.message)
     setOrgs(prev => prev.filter(o => o.id !== org.id))
