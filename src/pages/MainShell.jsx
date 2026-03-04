@@ -238,7 +238,7 @@ function MainShell({ session }) {
       </nav>
 
       {/* App Content */}
-      <div style={s.content}>
+      <div key={currentApp} style={s.content}>
         {loadingOrgs ? (
           <div style={s.loading}>Loading...</div>
         ) : (
