@@ -1,36 +1,66 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { offlineStore } from "../lib/offlineStore";
 
 // States: 0 = absent, 1 = present, 2 = excused
-export default function AttendancePage({ roster }) {
+export default function AttendancePage({ org, roster }) {
   const [players, setPlayers] = useState([]);
   const [practices, setPractices] = useState([]);
-  const [att, setAtt] = useState({});          // att[playerId][date] = 0|1|2
+  const [att, setAtt] = useState({});          // att[playerId][label] = 0|1|2
   const [loading, setLoading] = useState(false);
   const [highlighted, setHighlighted] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newPractice, setNewPractice] = useState("");
+  const saveTimer = useRef(null);
 
-  // Restore saved attendance when roster changes
   useEffect(() => {
     if (!roster?.id) { setPlayers([]); setAtt({}); setPractices([]); return; }
-    const saved = localStorage.getItem(`ucs_attendance_${roster.id}`);
-    if (saved) {
+
+    // Migrate old localStorage format (pre-DB) if present
+    const oldKey = `ucs_attendance_${roster.id}`;
+    const oldRaw = localStorage.getItem(oldKey);
+    if (oldRaw) {
       try {
-        const { practices: p, att: a } = JSON.parse(saved);
-        if (p) setPractices(p);
-        if (a) setAtt(a);
-      } catch { }
+        const { practices: p, att: a } = JSON.parse(oldRaw);
+        localStorage.removeItem(oldKey);
+        if (p?.length) {
+          // Push migrated data to DB and cache
+          setPractices(p || []);
+          setAtt(a || {});
+          saveToDb(p || [], a || {});
+          offlineStore.setCache(`attendance_${roster.id}`, { practices: p || [], records: a || {} });
+        }
+      } catch { localStorage.removeItem(oldKey); }
+    } else {
+      // Show cached data immediately while DB loads
+      const cached = offlineStore.getCache(`attendance_${roster.id}`);
+      if (cached) {
+        setPractices(cached.practices || []);
+        setAtt(cached.records || {});
+      }
     }
+
+    fetchData();
     fetchPlayers();
   }, [roster?.id]);
 
-  // Persist attendance whenever it changes
-  useEffect(() => {
-    if (!roster?.id || practices.length === 0) return;
-    localStorage.setItem(`ucs_attendance_${roster.id}`, JSON.stringify({ practices, att }));
-  }, [att, practices, roster?.id]);
+  async function fetchData() {
+    try {
+      if (!navigator.onLine) return; // cache already applied in useEffect
+      const { data, error } = await supabase
+        .from("attendance_data")
+        .select("practices, records")
+        .eq("roster_id", roster.id)
+        .single();
+      if (error && error.code !== "PGRST116") throw error; // PGRST116 = no rows
+      if (!data) return; // No row yet — starts empty
+      const p = data.practices || [];
+      const r = data.records || {};
+      setPractices(p);
+      setAtt(r);
+      offlineStore.setCache(`attendance_${roster.id}`, { practices: p, records: r });
+    } catch { /* cache already applied */ }
+  }
 
   async function fetchPlayers() {
     const cacheKey = `roster_players_${roster.id}`;
@@ -49,16 +79,6 @@ export default function AttendancePage({ roster }) {
         offlineStore.setCache(cacheKey, loaded);
       }
       setPlayers(loaded);
-      setAtt(prev => {
-        const next = {};
-        loaded.forEach(p => {
-          next[p.id] = { ...(prev[p.id] || {}) };
-          practices.forEach(d => {
-            if (next[p.id][d] === undefined) next[p.id][d] = 0;
-          });
-        });
-        return next;
-      });
     } catch {
       const cached = offlineStore.getCache(cacheKey);
       if (cached) setPlayers(cached);
@@ -67,26 +87,60 @@ export default function AttendancePage({ roster }) {
     }
   }
 
+  function scheduleSave(newPractices, newAtt) {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => saveToDb(newPractices, newAtt), 800);
+  }
+
+  async function saveToDb(currentPractices, currentAtt) {
+    if (!roster?.id || !org?.id) return;
+    const cacheKey = `attendance_${roster.id}`;
+    const queueKey = `attendance_${roster.id}`;
+    const payload = {
+      roster_id: roster.id,
+      organization_id: org.id,
+      practices: currentPractices,
+      records: currentAtt,
+      updated_at: new Date().toISOString(),
+    };
+    offlineStore.setCache(cacheKey, { practices: currentPractices, records: currentAtt });
+    if (!navigator.onLine) {
+      offlineStore.enqueue(queueKey, {
+        table: "attendance_data",
+        method: "upsert",
+        conflict: "roster_id",
+        data: payload,
+      });
+      return;
+    }
+    const { error } = await supabase
+      .from("attendance_data")
+      .upsert(payload, { onConflict: "roster_id" });
+    if (!error) offlineStore.dequeue(queueKey);
+  }
+
   function cycleState(playerId, date) {
-    setAtt(prev => ({
-      ...prev,
-      [playerId]: { ...prev[playerId], [date]: ((prev[playerId]?.[date] ?? 0) + 1) % 3 }
-    }));
+    const newAtt = {
+      ...att,
+      [playerId]: { ...att[playerId], [date]: ((att[playerId]?.[date] ?? 0) + 1) % 3 },
+    };
+    setAtt(newAtt);
+    scheduleSave(practices, newAtt);
   }
 
   function handleAddPractice() {
     const label = newPractice.trim();
     if (!label || practices.includes(label)) return;
-    setPractices(prev => [...prev, label]);
-    setAtt(prev => {
-      const next = { ...prev };
-      players.forEach(p => {
-        next[p.id] = { ...(next[p.id] || {}), [label]: 0 };
-      });
-      return next;
+    const newPractices = [...practices, label];
+    const newAtt = { ...att };
+    players.forEach(p => {
+      newAtt[p.id] = { ...(newAtt[p.id] || {}), [label]: 0 };
     });
+    setPractices(newPractices);
+    setAtt(newAtt);
     setNewPractice("");
     setShowAddForm(false);
+    scheduleSave(newPractices, newAtt);
   }
 
   function getCellStyle(state) {

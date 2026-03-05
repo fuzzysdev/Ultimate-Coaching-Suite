@@ -21,6 +21,8 @@ function SuperAdminPage({ session }) {
   const [creating, setCreating] = useState(false)
 
   const [deletingOrg, setDeletingOrg] = useState(null)
+  const [renamingOrg, setRenamingOrg] = useState(null)
+  const [renameValue, setRenameValue] = useState('')
   const [generatedCodes, setGeneratedCodes] = useState({})
   const [copiedCode, setCopiedCode] = useState(null)
   const [error, setError] = useState(null)
@@ -92,6 +94,19 @@ function SuperAdminPage({ session }) {
     } finally {
       setCreating(false)
     }
+  }
+
+  const handleRenameOrg = async () => {
+    const name = renameValue.trim()
+    if (!name || name === renamingOrg.name) { setRenamingOrg(null); return }
+    setError(null)
+    const { error } = await supabase
+      .from('organizations')
+      .update({ name })
+      .eq('id', renamingOrg.id)
+    if (error) return setError(error.message)
+    setOrgs(prev => prev.map(o => o.id === renamingOrg.id ? { ...o, name } : o))
+    setRenamingOrg(null)
   }
 
   const handleDeleteOrg = async () => {
@@ -245,43 +260,76 @@ function SuperAdminPage({ session }) {
 
                 {/* ── Org row ── */}
                 <div style={s.orgRow}>
-                  {/* Expand toggle + name */}
-                  <button onClick={() => toggleExpand(org.id)} style={s.expandBtn}>
-                    <span style={s.expandIcon}>{expandedOrg === org.id ? '▼' : '▶'}</span>
-                    <span style={s.orgName}>{org.name}</span>
-                  </button>
+                  {/* Expand toggle + name (or rename input) */}
+                  {renamingOrg?.id === org.id ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                      <span style={s.expandIcon}>{expandedOrg === org.id ? '▼' : '▶'}</span>
+                      <input
+                        autoFocus
+                        value={renameValue}
+                        onChange={e => setRenameValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleRenameOrg()
+                          if (e.key === 'Escape') setRenamingOrg(null)
+                        }}
+                        style={s.renameInput}
+                      />
+                    </div>
+                  ) : (
+                    <button onClick={() => toggleExpand(org.id)} style={s.expandBtn}>
+                      <span style={s.expandIcon}>{expandedOrg === org.id ? '▼' : '▶'}</span>
+                      <span style={s.orgName}>{org.name}</span>
+                    </button>
+                  )}
 
                   {/* Actions */}
                   <div style={s.orgActions}>
-                    {/* Invite code display or button */}
-                    {generatedCodes[org.id] ? (
-                      <div style={s.codeRow}>
-                        <span style={s.codeText}>{generatedCodes[org.id]}</span>
-                        <button
-                          onClick={() => handleCopyCode(generatedCodes[org.id], org.id)}
-                          style={s.copyBtn}
-                        >
-                          {copiedCode === org.id ? '✓ Copied' : 'Copy'}
-                        </button>
-                        <button onClick={() => dismissCode(org.id)} style={s.dimBtn}>✕</button>
-                      </div>
+                    {renamingOrg?.id === org.id ? (
+                      <>
+                        <button onClick={handleRenameOrg} style={s.saveBtn}>Save</button>
+                        <button onClick={() => setRenamingOrg(null)} style={s.confirmNo}>Cancel</button>
+                      </>
                     ) : (
-                      <button onClick={() => handleGenerateCode(org)} style={s.codeBtn}>
-                        + Invite Code
-                      </button>
-                    )}
+                      <>
+                        {/* Invite code display or button */}
+                        {generatedCodes[org.id] ? (
+                          <div style={s.codeRow}>
+                            <span style={s.codeText}>{generatedCodes[org.id]}</span>
+                            <button
+                              onClick={() => handleCopyCode(generatedCodes[org.id], org.id)}
+                              style={s.copyBtn}
+                            >
+                              {copiedCode === org.id ? '✓ Copied' : 'Copy'}
+                            </button>
+                            <button onClick={() => dismissCode(org.id)} style={s.dimBtn}>✕</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => handleGenerateCode(org)} style={s.codeBtn}>
+                            + Invite Code
+                          </button>
+                        )}
 
-                    {/* Delete with inline confirm */}
-                    {deletingOrg?.id === org.id ? (
-                      <div style={s.inlineConfirm}>
-                        <span style={s.confirmText}>Delete "{org.name}"?</span>
-                        <button onClick={handleDeleteOrg} style={s.confirmYes}>Yes, delete</button>
-                        <button onClick={() => setDeletingOrg(null)} style={s.confirmNo}>Cancel</button>
-                      </div>
-                    ) : (
-                      <button onClick={() => setDeletingOrg(org)} style={s.deleteBtn}>
-                        Delete
-                      </button>
+                        {/* Rename */}
+                        <button
+                          onClick={() => { setRenamingOrg(org); setRenameValue(org.name) }}
+                          style={s.renameBtn}
+                        >
+                          Rename
+                        </button>
+
+                        {/* Delete with inline confirm */}
+                        {deletingOrg?.id === org.id ? (
+                          <div style={s.inlineConfirm}>
+                            <span style={s.confirmText}>Delete "{org.name}"?</span>
+                            <button onClick={handleDeleteOrg} style={s.confirmYes}>Yes, delete</button>
+                            <button onClick={() => setDeletingOrg(null)} style={s.confirmNo}>Cancel</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setDeletingOrg(org)} style={s.deleteBtn}>
+                            Delete
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -483,6 +531,18 @@ const styles = {
     color: '#00e5a0', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '12px',
     fontWeight: '800', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
     textTransform: 'uppercase', letterSpacing: '0.5px'
+  },
+  renameInput: {
+    flex: 1, background: '#0f1117', border: '1px solid #a78bfa',
+    color: '#e8eaf0', padding: '6px 12px', borderRadius: '7px',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '15px',
+    fontWeight: '700', outline: 'none', textTransform: 'uppercase', letterSpacing: '0.5px'
+  },
+  renameBtn: {
+    background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)',
+    color: '#a78bfa', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '12px',
+    fontWeight: '700', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
+    textTransform: 'uppercase'
   },
   deleteBtn: {
     background: 'rgba(255,77,109,0.08)', border: '1px solid rgba(255,77,109,0.2)',

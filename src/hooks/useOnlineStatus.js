@@ -17,6 +17,8 @@ export async function flushPendingWrites() {
         ;({ error } = await supabase.from(item.table).update(item.data).match(item.match))
       } else if (item.method === 'insert') {
         ;({ error } = await supabase.from(item.table).insert(item.data))
+      } else if (item.method === 'upsert') {
+        ;({ error } = await supabase.from(item.table).upsert(item.data, { onConflict: item.conflict || 'id' }))
       }
       if (!error) offlineStore.dequeue(item.key)
     } catch { /* leave in queue — will retry */ }
