@@ -44,11 +44,20 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
 
   // Drag state — pointer events (works on iOS/iPad/Apple Pencil)
   const dragRef = useRef(null)        // { type, gender, fromIndex, toIndex, startY }
-  const [dragPreview, setDragPreview] = useState(null) // { type, gender, toIndex }
+  const [dragPreview, setDragPreview] = useState(null) // { type, gender, fromIndex, toIndex }
+
+  // Responsive layout
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640)
 
   useEffect(() => {
     fetchPlayers()
     fetchRosters()
+  }, [])
+
+  useEffect(() => {
+    const fn = () => setIsMobile(window.innerWidth < 640)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
   }, [])
 
   const fetchPlayers = async () => {
@@ -280,14 +289,14 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
     dragRef.current = { type: 'card', gender, fromIndex: index, toIndex: index, startY: e.clientY }
-    setDragPreview({ type: 'card', gender, toIndex: index })
+    setDragPreview({ type: 'card', gender, fromIndex: index, toIndex: index })
   }
 
   const startLineDrag = (e, lineType, gender, currentIndex) => {
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
     dragRef.current = { type: lineType, gender, fromIndex: currentIndex, toIndex: currentIndex, startY: e.clientY }
-    setDragPreview({ type: lineType, gender, toIndex: currentIndex })
+    setDragPreview({ type: lineType, gender, fromIndex: currentIndex, toIndex: currentIndex })
   }
 
   const handleDragMove = (e) => {
@@ -305,7 +314,7 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
       toIndex = Math.max(bubbleIndex[d.gender], Math.min(list.length, d.fromIndex + steps))
     }
     dragRef.current.toIndex = toIndex
-    setDragPreview({ type: d.type, gender: d.gender, toIndex })
+    setDragPreview({ type: d.type, gender: d.gender, fromIndex: d.fromIndex, toIndex })
   }
 
   const handleDragEnd = async () => {
@@ -419,9 +428,10 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
     let draggedId = null
     if (dragPreview && dragPreview.gender === gender) {
       const { type, toIndex } = dragPreview
-      if (type === 'card' && dragRef.current) {
-        draggedId = ids[dragRef.current.fromIndex]
-        const [moved] = ids.splice(dragRef.current.fromIndex, 1)
+      if (type === 'card') {
+        const { fromIndex } = dragPreview
+        draggedId = ids[fromIndex]
+        const [moved] = ids.splice(fromIndex, 1)
         ids.splice(toIndex, 0, moved)
       } else if (type === 'bubble') {
         bubAt = Math.max(0, Math.min(cutAt, toIndex))
@@ -664,7 +674,7 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
       {/* ── RANKINGS VIEW ── */}
       {view === 'rankings' && (
         loading ? <p style={s.muted}>Loading...</p> : (
-          <div style={s.rankLayout}>
+          <div style={{ ...s.rankLayout, flexDirection: isMobile ? 'column' : 'row' }}>
             {/* Male Column */}
             <div style={s.rankColumn}>
               <div style={s.colHeader}>
