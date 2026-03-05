@@ -66,8 +66,11 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
       playerList.forEach(p => { if (p.notes) notesMap[p.id] = p.notes })
       setNotes(notesMap)
 
-      // Sync rankings
-      syncRankings(playerList, rankings, cutIndex, bubbleIndex)
+      // Sync rankings and immediately persist — ensures any players added
+      // by another device (who called saveToDb without knowing about them)
+      // are written back before this session makes any further changes.
+      const synced = syncRankings(playerList, rankings, cutIndex, bubbleIndex)
+      await saveToDb(synced, cutIndex, bubbleIndex)
     } catch (err) {
       setError(err.message)
     } finally {
