@@ -42,9 +42,9 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
   // Remove confirmation
   const [removingPlayer, setRemovingPlayer] = useState(null)
 
-  // Drag state
-  const dragSrc = useRef(null)
-  const dragGender = useRef(null)
+  // Drag state — pointer events (works on iOS/iPad/Apple Pencil)
+  const dragRef = useRef(null)        // { type, gender, fromIndex, toIndex, startY }
+  const [dragPreview, setDragPreview] = useState(null) // { type, gender, toIndex }
 
   useEffect(() => {
     fetchPlayers()
@@ -273,27 +273,63 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
     await saveToDb(rankings, cutIndex, newBubble)
   }
 
-  // ── DRAG AND DROP ──
-  const onDragStart = (e, id, gender, index) => {
-    dragSrc.current = { id, index }
-    dragGender.current = gender
-    e.dataTransfer.effectAllowed = 'move'
+  // ── DRAG AND DROP (pointer events — works on iOS / Apple Pencil) ──
+  const SLOT_H = 62 // estimated height per card slot in px
+
+  const startCardDrag = (e, gender, index) => {
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragRef.current = { type: 'card', gender, fromIndex: index, toIndex: index, startY: e.clientY }
+    setDragPreview({ type: 'card', gender, toIndex: index })
   }
 
-  const onDragOver = (e) => { e.preventDefault() }
-
-  const onDrop = async (e, toIndex, gender) => {
+  const startLineDrag = (e, lineType, gender, currentIndex) => {
     e.preventDefault()
-    if (!dragSrc.current || dragGender.current !== gender) return
-    const fromIndex = dragSrc.current.index
-    if (fromIndex === toIndex) return
-    const list = [...rankings[gender]]
-    const [moved] = list.splice(fromIndex, 1)
-    list.splice(toIndex, 0, moved)
-    const newR = { ...rankings, [gender]: list }
-    setRankings(newR)
-    dragSrc.current = null
-    await saveToDb(newR, cutIndex, bubbleIndex)
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragRef.current = { type: lineType, gender, fromIndex: currentIndex, toIndex: currentIndex, startY: e.clientY }
+    setDragPreview({ type: lineType, gender, toIndex: currentIndex })
+  }
+
+  const handleDragMove = (e) => {
+    const d = dragRef.current
+    if (!d) return
+    const dy = e.clientY - d.startY
+    const steps = Math.round(dy / SLOT_H)
+    const list = rankings[d.gender]
+    let toIndex
+    if (d.type === 'card') {
+      toIndex = Math.max(0, Math.min(list.length - 1, d.fromIndex + steps))
+    } else if (d.type === 'bubble') {
+      toIndex = Math.max(0, Math.min(cutIndex[d.gender], d.fromIndex + steps))
+    } else {
+      toIndex = Math.max(bubbleIndex[d.gender], Math.min(list.length, d.fromIndex + steps))
+    }
+    dragRef.current.toIndex = toIndex
+    setDragPreview({ type: d.type, gender: d.gender, toIndex })
+  }
+
+  const handleDragEnd = async () => {
+    const d = dragRef.current
+    dragRef.current = null
+    setDragPreview(null)
+    if (!d || d.fromIndex === d.toIndex) return
+    const { type, gender, fromIndex, toIndex } = d
+    if (type === 'card') {
+      const list = [...rankings[gender]]
+      const [moved] = list.splice(fromIndex, 1)
+      list.splice(toIndex, 0, moved)
+      const newR = { ...rankings, [gender]: list }
+      setRankings(newR)
+      await saveToDb(newR, cutIndex, bubbleIndex)
+    } else if (type === 'bubble') {
+      const newBubble = { ...bubbleIndex, [gender]: Math.max(0, Math.min(cutIndex[gender], toIndex)) }
+      setBubbleIndex(newBubble)
+      await saveToDb(rankings, cutIndex, newBubble)
+    } else {
+      const newCut = { ...cutIndex, [gender]: Math.max(bubbleIndex[gender], Math.min(rankings[gender].length, toIndex)) }
+      setCutIndex(newCut)
+      await saveToDb(rankings, newCut, bubbleIndex)
+    }
   }
 
   // ── PROMOTE ──
@@ -375,50 +411,66 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
 
   // ── RENDER COLUMN ──
   const renderColumn = (gender) => {
-    const ids = rankings[gender] || []
-    const bubAt = Math.min(bubbleIndex[gender], ids.length)
-    const cutAt = Math.min(cutIndex[gender], ids.length)
+    let ids = [...(rankings[gender] || [])]
+    let bubAt = Math.min(bubbleIndex[gender], ids.length)
+    let cutAt = Math.min(cutIndex[gender], ids.length)
+
+    // Apply live drag preview so the UI updates in real time while dragging
+    let draggedId = null
+    if (dragPreview && dragPreview.gender === gender) {
+      const { type, toIndex } = dragPreview
+      if (type === 'card' && dragRef.current) {
+        draggedId = ids[dragRef.current.fromIndex]
+        const [moved] = ids.splice(dragRef.current.fromIndex, 1)
+        ids.splice(toIndex, 0, moved)
+      } else if (type === 'bubble') {
+        bubAt = Math.max(0, Math.min(cutAt, toIndex))
+      } else if (type === 'cut') {
+        cutAt = Math.max(bubAt, Math.min(ids.length, toIndex))
+      }
+    }
+
+    // Helper: build a draggable divider line
+    const buildDivider = (divType, lineIndex) => (
+      <div key={`${divType}-${gender}`} style={sc.divider}>
+        <div style={sc.dividerLine(divType)} />
+        <div style={sc.dividerPill(divType)}>
+          <div
+            style={sc.lineDragHandle}
+            onPointerDown={(e) => startLineDrag(e, divType, gender, lineIndex)}
+            onPointerMove={handleDragMove}
+            onPointerUp={handleDragEnd}
+            onPointerCancel={handleDragEnd}
+          >⠿</div>
+          <div style={sc.dividerArrows}>
+            <button
+              style={sc.arrowBtn}
+              onPointerDown={e => e.stopPropagation()}
+              onClick={() => divType === 'bubble' ? moveBubble(gender, -1) : moveCut(gender, -1)}
+            >▲</button>
+            <button
+              style={sc.arrowBtn}
+              onPointerDown={e => e.stopPropagation()}
+              onClick={() => divType === 'bubble' ? moveBubble(gender, 1) : moveCut(gender, 1)}
+            >▼</button>
+          </div>
+          {divType === 'bubble' ? '🫧 Bubble' : '✂ Cut Line'}
+        </div>
+        <div style={sc.dividerLine(divType)} />
+      </div>
+    )
+
     const items = []
 
     ids.forEach((id, i) => {
       const p = getPlayer(id)
       if (!p) return
-      const zone = getZone(i, gender)
+      const zone = i < bubAt ? 'keep' : i < cutAt ? 'bubble' : 'cut'
       const hasNote = notes[id] && notes[id].trim()
+      const isBeingDragged = draggedId === id
 
-      // Insert bubble divider before this item if needed
-      if (i === bubAt && i > 0) {
-        items.push(
-          <div key={`bubble-${gender}`} style={sc.divider}>
-            <div style={sc.dividerLine('bubble')} />
-            <div style={sc.dividerPill('bubble')}>
-              <div style={sc.dividerArrows}>
-                <button style={sc.arrowBtn} onClick={() => moveBubble(gender, -1)}>▲</button>
-                <button style={sc.arrowBtn} onClick={() => moveBubble(gender, 1)}>▼</button>
-              </div>
-              🫧 Bubble
-            </div>
-            <div style={sc.dividerLine('bubble')} />
-          </div>
-        )
-      }
-
-      // Insert cut divider before this item if needed
-      if (i === cutAt && i > 0 && cutAt !== bubAt) {
-        items.push(
-          <div key={`cut-${gender}`} style={sc.divider}>
-            <div style={sc.dividerLine('cut')} />
-            <div style={sc.dividerPill('cut')}>
-              <div style={sc.dividerArrows}>
-                <button style={sc.arrowBtn} onClick={() => moveCut(gender, -1)}>▲</button>
-                <button style={sc.arrowBtn} onClick={() => moveCut(gender, 1)}>▼</button>
-              </div>
-              ✂ Cut Line
-            </div>
-            <div style={sc.dividerLine('cut')} />
-          </div>
-        )
-      }
+      if (i === bubAt && i > 0) items.push(buildDivider('bubble', bubAt))
+      if (i === cutAt && i > 0 && cutAt !== bubAt) items.push(buildDivider('cut', cutAt))
 
       const zoneColor = zone === 'keep' ? '#00e5a0' : zone === 'bubble' ? '#a78bfa' : '#ff4d6d'
       const cardBg = zone === 'keep' ? 'rgba(0,229,160,0.04)' : zone === 'bubble' ? 'rgba(167,139,250,0.06)' : 'rgba(255,77,109,0.04)'
@@ -427,15 +479,15 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
       items.push(
         <div
           key={id}
-          draggable
-          onDragStart={(e) => onDragStart(e, id, gender, i)}
-          onDragOver={onDragOver}
-          onDrop={(e) => onDrop(e, i, gender)}
-          style={{ ...sc.card, background: cardBg, borderColor: cardBorder }}
+          style={{ ...sc.card, background: cardBg, borderColor: cardBorder, opacity: isBeingDragged ? 0.35 : 1, userSelect: 'none' }}
         >
-          <div style={sc.dragHandle}>
-            <span /><span /><span />
-          </div>
+          <div
+            style={sc.dragHandle}
+            onPointerDown={(e) => startCardDrag(e, gender, i)}
+            onPointerMove={handleDragMove}
+            onPointerUp={handleDragEnd}
+            onPointerCancel={handleDragEnd}
+          >⠿</div>
           <div style={sc.cardInfo}>
             <div style={sc.cardName}>{p.name}</div>
             <div style={sc.cardMeta}>
@@ -461,57 +513,15 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
         </div>
       )
 
-      // Dividers at end if needed
       if (i === ids.length - 1) {
-        if (bubAt > ids.length) {
-          items.push(
-            <div key={`bubble-end-${gender}`} style={sc.divider}>
-              <div style={sc.dividerLine('bubble')} />
-              <div style={sc.dividerPill('bubble')}>
-                <div style={sc.dividerArrows}>
-                  <button style={sc.arrowBtn} onClick={() => moveBubble(gender, -1)}>▲</button>
-                  <button style={sc.arrowBtn} onClick={() => moveBubble(gender, 1)}>▼</button>
-                </div>
-                🫧 Bubble
-              </div>
-              <div style={sc.dividerLine('bubble')} />
-            </div>
-          )
-        }
-        if (cutAt > ids.length) {
-          items.push(
-            <div key={`cut-end-${gender}`} style={sc.divider}>
-              <div style={sc.dividerLine('cut')} />
-              <div style={sc.dividerPill('cut')}>
-                <div style={sc.dividerArrows}>
-                  <button style={sc.arrowBtn} onClick={() => moveCut(gender, -1)}>▲</button>
-                  <button style={sc.arrowBtn} onClick={() => moveCut(gender, 1)}>▼</button>
-                </div>
-                ✂ Cut Line
-              </div>
-              <div style={sc.dividerLine('cut')} />
-            </div>
-          )
-        }
+        if (bubAt > ids.length) items.push(buildDivider('bubble', bubAt))
+        if (cutAt > ids.length) items.push(buildDivider('cut', cutAt))
       }
     })
 
-    // If no players, show dividers at top
     if (ids.length === 0) {
-      items.push(
-        <div key={`bubble-empty-${gender}`} style={sc.divider}>
-          <div style={sc.dividerLine('bubble')} />
-          <div style={sc.dividerPill('bubble')}>🫧 Bubble</div>
-          <div style={sc.dividerLine('bubble')} />
-        </div>
-      )
-      items.push(
-        <div key={`cut-empty-${gender}`} style={sc.divider}>
-          <div style={sc.dividerLine('cut')} />
-          <div style={sc.dividerPill('cut')}>✂ Cut Line</div>
-          <div style={sc.dividerLine('cut')} />
-        </div>
-      )
+      items.push(buildDivider('bubble', bubAt))
+      items.push(buildDivider('cut', cutAt))
     }
 
     return items
@@ -943,8 +953,14 @@ const scoreStyles = {
     padding: '10px', marginBottom: '6px', cursor: 'grab'
   },
   dragHandle: {
-    display: 'flex', flexDirection: 'column', gap: '5px',
-    padding: '8px 10px', flexShrink: 0
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '8px 10px', flexShrink: 0, fontSize: '20px',
+    color: '#7a8099', cursor: 'grab', touchAction: 'none'
+  },
+  lineDragHandle: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '4px 6px', fontSize: '16px', opacity: 0.8,
+    cursor: 'grab', touchAction: 'none', flexShrink: 0
   },
   cardInfo: { flex: 1, minWidth: 0 },
   cardName: {
