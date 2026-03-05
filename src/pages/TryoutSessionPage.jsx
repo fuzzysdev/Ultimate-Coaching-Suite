@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { offlineStore } from '../lib/offlineStore'
 import ConfirmDialog from '../Components/ConfirmDialog'
 
 const GRADES = ['6th', '7th', '8th', '9th', '10th', '11th', '12th', 'College', 'Adult']
@@ -51,15 +52,30 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
   }, [])
 
   const fetchPlayers = async () => {
+    const cacheKey = `tryout_players_${tryout.id}`
     try {
       setLoading(true)
+      let playerList
+
+      if (!navigator.onLine) {
+        // Serve from cache — no DB write when offline
+        playerList = offlineStore.getCache(cacheKey) || []
+        setPlayers(playerList)
+        const notesMap = {}
+        playerList.forEach(p => { if (p.notes) notesMap[p.id] = p.notes })
+        setNotes(notesMap)
+        syncRankings(playerList, rankings, cutIndex, bubbleIndex)
+        return
+      }
+
       const { data, error } = await supabase
         .from('tryout_players')
         .select('id, name, grade, gender, notes')
         .eq('tryout_id', tryout.id)
       if (error) throw error
-      const playerList = data || []
+      playerList = data || []
       setPlayers(playerList)
+      offlineStore.setCache(cacheKey, playerList)
 
       // Build notes map
       const notesMap = {}
@@ -72,7 +88,17 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
       const synced = syncRankings(playerList, rankings, cutIndex, bubbleIndex)
       await saveToDb(synced, cutIndex, bubbleIndex)
     } catch (err) {
-      setError(err.message)
+      // Network error — fall back to cache
+      const cached = offlineStore.getCache(cacheKey)
+      if (cached) {
+        setPlayers(cached)
+        const notesMap = {}
+        cached.forEach(p => { if (p.notes) notesMap[p.id] = p.notes })
+        setNotes(notesMap)
+        syncRankings(cached, rankings, cutIndex, bubbleIndex)
+      } else {
+        setError(err.message)
+      }
     } finally {
       setLoading(false)
     }
@@ -97,11 +123,39 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
   }
 
   const saveToDb = async (newRankings, newCut, newBubble) => {
-    await supabase.from('tryouts').update({
-      rankings: newRankings,
-      cut_index: newCut,
-      bubble_index: newBubble
-    }).eq('id', tryout.id)
+    const queueKey = `tryout_rankings_${tryout.id}`
+    const payload = { rankings: newRankings, cut_index: newCut, bubble_index: newBubble }
+
+    if (!navigator.onLine) {
+      // Persist locally and queue for sync when back online
+      offlineStore.setCache(`tryout_${tryout.id}_rankings`, payload)
+      offlineStore.enqueue(queueKey, {
+        table: 'tryouts', method: 'update',
+        match: { id: tryout.id }, data: payload
+      })
+      return
+    }
+
+    // Merge-before-write: append any player IDs present in DB but not locally
+    // (added by another device during this session) so we never erase their work.
+    try {
+      const { data: cur } = await supabase
+        .from('tryouts').select('rankings').eq('id', tryout.id).single()
+      if (cur?.rankings) {
+        const merged = { ...newRankings }
+        ;['M', 'F'].forEach(g => {
+          const extra = (cur.rankings[g] || []).filter(id => !(merged[g] || []).includes(id))
+          if (extra.length) merged[g] = [...(merged[g] || []), ...extra]
+        })
+        payload.rankings = merged
+      }
+    } catch { /* proceed with local state if read fails */ }
+
+    const { error } = await supabase.from('tryouts').update(payload).eq('id', tryout.id)
+    if (!error) {
+      offlineStore.setCache(`tryout_${tryout.id}_rankings`, payload)
+      offlineStore.dequeue(queueKey)
+    }
   }
 
   // ── ADD PLAYER ──

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import InviteModal from '../Components/InviteModal'
 import CreateOrgModal from '../Components/CreateOrgModal'
 import RostersPage from './RostersPage'
@@ -27,6 +28,7 @@ function MainShell({ session }) {
   const [showCreateOrgModal, setShowCreateOrgModal] = useState(false)
   const [joinedOrgName, setJoinedOrgName] = useState(null)
   const [loadingOrgs, setLoadingOrgs] = useState(true)
+  const isOnline = useOnlineStatus()
 
   useEffect(() => { fetchOrganizations() }, [])
   useEffect(() => { if (selectedOrg) fetchRosters(selectedOrg.id) }, [selectedOrg])
@@ -156,6 +158,13 @@ function MainShell({ session }) {
         />
       )}
 
+      {/* Offline banner */}
+      {!isOnline && (
+        <div style={s.offlineBanner}>
+          Offline — changes will sync when connection is restored
+        </div>
+      )}
+
       {/* Toast */}
       {joinedOrgName && (
         <div style={s.toast}>✓ Joined {joinedOrgName}!</div>
@@ -251,6 +260,12 @@ function MainShell({ session }) {
 
 const styles = {
   container: { display: 'flex', flexDirection: 'column', height: '100vh', background: '#0f1117' },
+  offlineBanner: {
+    background: '#2a1f0a', borderBottom: '1px solid #7a4a0a',
+    color: '#fbbf24', fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: '12px', fontWeight: '700', textAlign: 'center',
+    padding: '6px 16px', letterSpacing: '0.5px', textTransform: 'uppercase'
+  },
   toast: {
     position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
     background: '#00e5a0', color: '#0f1117', fontFamily: "'Barlow Condensed', sans-serif",

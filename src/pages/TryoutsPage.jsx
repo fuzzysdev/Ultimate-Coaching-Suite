@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { offlineStore } from '../lib/offlineStore'
 import TryoutSessionPage from './TryoutSessionPage'
 import ConfirmDialog from '../Components/ConfirmDialog'
 
@@ -17,17 +18,30 @@ function TryoutsPage({ org, session }) {
   useEffect(() => { fetchTryouts() }, [org.id])
 
   const fetchTryouts = async () => {
+    const cacheKey = `tryouts_${org.id}`
     try {
       setLoading(true)
+
+      if (!navigator.onLine) {
+        const cached = offlineStore.getCache(cacheKey)
+        if (cached) { setTryouts(cached); setError(null) }
+        else setError('You are offline and no cached data is available.')
+        return
+      }
+
       const { data, error } = await supabase
         .from('tryouts')
         .select('id, name, date, created_at, rankings, cut_index, bubble_index')
         .eq('organization_id', org.id)
         .order('created_at', { ascending: false })
       if (error) throw error
-      setTryouts(data || [])
+      const list = data || []
+      setTryouts(list)
+      offlineStore.setCache(cacheKey, list)
     } catch (err) {
-      setError(err.message)
+      const cached = offlineStore.getCache(cacheKey)
+      if (cached) { setTryouts(cached); setError('Offline — showing cached data') }
+      else setError(err.message)
     } finally {
       setLoading(false)
     }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { offlineStore } from "../lib/offlineStore";
 
 // States: 0 = absent, 1 = present, 2 = excused
 export default function AttendancePage({ roster }) {
@@ -11,36 +12,59 @@ export default function AttendancePage({ roster }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newPractice, setNewPractice] = useState("");
 
+  // Restore saved attendance when roster changes
   useEffect(() => {
-    if (roster?.id) {
-      fetchPlayers();
-    } else {
-      setPlayers([]);
-      setAtt({});
+    if (!roster?.id) { setPlayers([]); setAtt({}); setPractices([]); return; }
+    const saved = localStorage.getItem(`ucs_attendance_${roster.id}`);
+    if (saved) {
+      try {
+        const { practices: p, att: a } = JSON.parse(saved);
+        if (p) setPractices(p);
+        if (a) setAtt(a);
+      } catch { }
     }
+    fetchPlayers();
   }, [roster?.id]);
 
+  // Persist attendance whenever it changes
+  useEffect(() => {
+    if (!roster?.id || practices.length === 0) return;
+    localStorage.setItem(`ucs_attendance_${roster.id}`, JSON.stringify({ practices, att }));
+  }, [att, practices, roster?.id]);
+
   async function fetchPlayers() {
+    const cacheKey = `roster_players_${roster.id}`;
     setLoading(true);
-    const { data } = await supabase
-      .from("players")
-      .select("id, name, gender")
-      .eq("roster_id", roster.id)
-      .order("name");
-    const loaded = data || [];
-    setPlayers(loaded);
-    // Init attendance: keep existing entries, add missing player/date combos as absent
-    setAtt(prev => {
-      const next = {};
-      loaded.forEach(p => {
-        next[p.id] = { ...(prev[p.id] || {}) };
-        practices.forEach(d => {
-          if (next[p.id][d] === undefined) next[p.id][d] = 0;
+    try {
+      let loaded;
+      if (!navigator.onLine) {
+        loaded = offlineStore.getCache(cacheKey) || [];
+      } else {
+        const { data } = await supabase
+          .from("players")
+          .select("id, name, gender")
+          .eq("roster_id", roster.id)
+          .order("name");
+        loaded = data || [];
+        offlineStore.setCache(cacheKey, loaded);
+      }
+      setPlayers(loaded);
+      setAtt(prev => {
+        const next = {};
+        loaded.forEach(p => {
+          next[p.id] = { ...(prev[p.id] || {}) };
+          practices.forEach(d => {
+            if (next[p.id][d] === undefined) next[p.id][d] = 0;
+          });
         });
+        return next;
       });
-      return next;
-    });
-    setLoading(false);
+    } catch {
+      const cached = offlineStore.getCache(cacheKey);
+      if (cached) setPlayers(cached);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function cycleState(playerId, date) {
