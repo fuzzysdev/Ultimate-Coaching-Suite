@@ -328,7 +328,7 @@ const styles = {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: '13px', fontWeight: '700',
     padding: '12px 16px', cursor: 'pointer', textTransform: 'uppercase',
     letterSpacing: '0.5px', borderBottom: '2px solid transparent',
-    transition: 'all 0.15s', whiteSpace: 'nowrap'
+    transition: 'color 0.15s', whiteSpace: 'nowrap'
   },
   navBtnActive: { color: '#00e5a0', borderBottomColor: '#00e5a0' },
   content: { flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' },
