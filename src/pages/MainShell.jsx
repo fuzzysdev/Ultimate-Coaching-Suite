@@ -331,7 +331,7 @@ const styles = {
     transition: 'color 0.15s', whiteSpace: 'nowrap'
   },
   navBtnActive: { color: '#00e5a0', borderBottomColor: '#00e5a0' },
-  content: { flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' },
+  content: { flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: '#0f1117' },
   loading: {
     display: 'flex', justifyContent: 'center', alignItems: 'center',
     flex: 1, color: '#7a8099', fontFamily: "'Barlow Condensed', sans-serif",
