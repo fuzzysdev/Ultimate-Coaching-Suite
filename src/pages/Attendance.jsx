@@ -256,7 +256,7 @@ export default function AttendancePage({ roster }) {
                                 }}
                                   onClick={() => cycleState(p.id, d)}>
                                   <div style={{
-                                    width: 26, height: 26, borderRadius: 4, margin: "0 auto",
+                                    width: 36, height: 36, borderRadius: 5, margin: "0 auto",
                                     background: bg, border: `1px solid ${border}`,
                                     display: "flex", alignItems: "center", justifyContent: "center",
                                     fontSize: 12, fontWeight: 900, color,

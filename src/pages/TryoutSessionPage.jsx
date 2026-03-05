@@ -886,8 +886,8 @@ const scoreStyles = {
     padding: '10px', marginBottom: '6px', cursor: 'grab'
   },
   dragHandle: {
-    display: 'flex', flexDirection: 'column', gap: '3px',
-    padding: '4px 6px', flexShrink: 0
+    display: 'flex', flexDirection: 'column', gap: '5px',
+    padding: '8px 10px', flexShrink: 0
   },
   cardInfo: { flex: 1, minWidth: 0 },
   cardName: {
@@ -895,29 +895,31 @@ const scoreStyles = {
     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
   },
   cardMeta: { fontSize: '11px', color: '#7a8099', marginTop: '2px' },
-  cardActions: { display: 'flex', gap: '2px', alignItems: 'center' },
+  cardActions: { display: 'flex', gap: '4px', alignItems: 'center' },
   moveBtn: {
     background: 'none', border: '1px solid transparent', cursor: 'pointer',
-    color: '#7a8099', padding: '5px 7px', borderRadius: '6px', fontSize: '11px',
-    transition: 'all 0.12s'
+    color: '#7a8099', padding: '8px 10px', borderRadius: '6px', fontSize: '13px',
+    transition: 'all 0.12s', minWidth: 36, textAlign: 'center'
   },
   notesBtn: {
     background: 'none', border: '1px solid transparent', cursor: 'pointer',
-    padding: '5px 7px', borderRadius: '6px', fontSize: '15px'
+    padding: '8px 10px', borderRadius: '6px', fontSize: '15px', minWidth: 36, textAlign: 'center'
   },
   notesBtnActive: { color: '#00e5a0' },
   editBtn: {
     background: 'none', border: '1px solid transparent', cursor: 'pointer',
-    color: '#7a8099', padding: '5px 7px', borderRadius: '6px', fontSize: '14px'
+    color: '#7a8099', padding: '8px 10px', borderRadius: '6px', fontSize: '14px',
+    minWidth: 36, textAlign: 'center'
   },
   removeBtn: {
     background: 'none', border: '1px solid transparent', cursor: 'pointer',
-    color: '#7a8099', padding: '5px 7px', borderRadius: '6px', fontSize: '13px'
+    color: '#7a8099', padding: '8px 10px', borderRadius: '6px', fontSize: '13px',
+    minWidth: 36, textAlign: 'center'
   },
   promoteBtn: {
     background: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.2)',
-    cursor: 'pointer', color: '#00e5a0', padding: '5px 7px',
-    borderRadius: '6px', fontSize: '13px', fontWeight: '700'
+    cursor: 'pointer', color: '#00e5a0', padding: '8px 10px',
+    borderRadius: '6px', fontSize: '13px', fontWeight: '700', minWidth: 36, textAlign: 'center'
   },
   divider: {
     display: 'flex', alignItems: 'center', gap: '8px',
@@ -941,7 +943,8 @@ const scoreStyles = {
   dividerArrows: { display: 'flex', flexDirection: 'column', gap: 0 },
   arrowBtn: {
     background: 'none', border: 'none', cursor: 'pointer',
-    color: 'inherit', fontSize: '10px', lineHeight: 1, padding: '1px 2px'
+    color: 'inherit', fontSize: '13px', lineHeight: 1, padding: '8px 10px',
+    minWidth: 36, textAlign: 'center'
   }
 }
 

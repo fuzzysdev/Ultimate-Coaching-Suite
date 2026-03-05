@@ -10,12 +10,12 @@ function getGenderForPoint(i, first) {
   return Math.floor((i - 1) / 2) % 2 === 0 ? other : first
 }
 
-const NAME_W  = 82   // px — sticky name column
-const COL_W   = 28   // px — each point column
-const HDR_H   = 20   // px — pt# and gender header rows
-const SEC_H   = 18   // px — section label row height
-const ROW_H   = 29   // px — player row height
-const SCORE_H = 20   // px — score rows at bottom of grid
+const NAME_W  = 90   // px — sticky name column
+const COL_W   = 36   // px — each point column (wider for pencil/touch)
+const HDR_H   = 24   // px — pt# and gender header rows
+const SEC_H   = 20   // px — section label row height
+const ROW_H   = 38   // px — player row height (touch-friendly)
+const SCORE_H = 24   // px — score rows at bottom of grid
 const MAX_TO  = 3
 
 const POS = { h: 'H', c: 'C', b: 'Hy', e: 'E' }
@@ -619,7 +619,7 @@ const S = {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 9, fontWeight: 700,
     color: '#4a5068', textTransform: 'uppercase', letterSpacing: 1, minWidth: 24
   },
-  toDot:      { width: 14, height: 14, borderRadius: '50%', border: 'none', padding: 0, cursor: 'pointer' },
+  toDot:      { width: 22, height: 22, borderRadius: '50%', border: 'none', padding: 0, cursor: 'pointer' },
   toAvail:    { background: '#00e5a0' },
   toAvailOpp: { background: '#ff4d6d' },
   toUsed:     { background: '#2a2f42', cursor: 'default' },

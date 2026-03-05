@@ -37,7 +37,7 @@ html, body, #root { height: 100%; }
   padding-right: env(safe-area-inset-right);
 }
 
-button { cursor: pointer; font-family: 'Barlow', sans-serif; }
+button { cursor: pointer; font-family: 'Barlow', sans-serif; touch-action: manipulation; }
 
 input, select {
   font-family: 'Barlow', sans-serif;

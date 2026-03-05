@@ -206,10 +206,10 @@ const styles = {
   chipLabel: { color: '#7a8099', fontSize: '0.8rem' },
   sortBar: { display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '1rem', flexWrap: 'wrap' },
   sortBtn: {
-    padding: '4px 12px', border: '1px solid #2a2f42', borderRadius: '9999px',
-    background: '#181c26', cursor: 'pointer', fontSize: '0.8rem', color: '#7a8099',
+    padding: '8px 14px', border: '1px solid #2a2f42', borderRadius: '9999px',
+    background: '#181c26', cursor: 'pointer', fontSize: '0.85rem', color: '#7a8099',
     fontFamily: "'Barlow Condensed', sans-serif", fontWeight: '700', textTransform: 'uppercase',
-    letterSpacing: '0.5px'
+    letterSpacing: '0.5px', minHeight: 36
   },
   sortBtnActive: { background: '#00e5a0', color: '#0f1117', borderColor: '#00e5a0' },
   tableWrapper: {
@@ -230,15 +230,17 @@ const styles = {
   },
   editBtn: {
     background: 'none', border: '1px solid transparent', color: '#7a8099',
-    padding: '4px 8px', borderRadius: '5px', cursor: 'pointer',
+    padding: '8px 12px', borderRadius: '5px', cursor: 'pointer',
     fontSize: '13px', marginRight: '4px', transition: 'all 0.15s',
-    fontFamily: "'Barlow Condensed', sans-serif", fontWeight: '700', textTransform: 'uppercase'
+    fontFamily: "'Barlow Condensed', sans-serif", fontWeight: '700', textTransform: 'uppercase',
+    minHeight: 36
   },
   removeBtn: {
     background: 'none', border: '1px solid transparent', color: '#7a8099',
-    padding: '4px 8px', borderRadius: '5px', cursor: 'pointer',
+    padding: '8px 12px', borderRadius: '5px', cursor: 'pointer',
     fontSize: '13px', transition: 'all 0.15s',
-    fontFamily: "'Barlow Condensed', sans-serif", fontWeight: '700', textTransform: 'uppercase'
+    fontFamily: "'Barlow Condensed', sans-serif", fontWeight: '700', textTransform: 'uppercase',
+    minHeight: 36
   },
   empty: {
     display: 'flex', flexDirection: 'column', alignItems: 'center',

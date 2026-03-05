@@ -287,14 +287,14 @@ const styles = {
   newOrgBtn: {
     background: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.2)',
     color: '#00e5a0', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '12px',
-    fontWeight: '800', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
-    textTransform: 'uppercase', letterSpacing: '0.5px'
+    fontWeight: '800', padding: '10px 14px', borderRadius: '6px', cursor: 'pointer',
+    textTransform: 'uppercase', letterSpacing: '0.5px', minHeight: 40
   },
   inviteBtn: {
     background: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.2)',
     color: '#00e5a0', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '12px',
-    fontWeight: '800', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
-    textTransform: 'uppercase', letterSpacing: '0.5px'
+    fontWeight: '800', padding: '10px 14px', borderRadius: '6px', cursor: 'pointer',
+    textTransform: 'uppercase', letterSpacing: '0.5px', minHeight: 40
   },
   headerRight: { display: 'flex', alignItems: 'center', gap: '10px' },
   userEmail: { color: '#7a8099', fontSize: '12px' },
