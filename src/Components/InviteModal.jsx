@@ -12,7 +12,7 @@ function InviteModal({ org, userId, onJoined, onClose }) {
 
   const makeCode = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-    const bytes = new Uint8Array(12)
+    const bytes = new Uint8Array(16)
     crypto.getRandomValues(bytes)
     return Array.from(bytes, b => chars[b % chars.length]).join('')
   }
@@ -41,7 +41,7 @@ function InviteModal({ org, userId, onJoined, onClose }) {
   }
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(generatedCode)
+    navigator.clipboard.writeText(generatedCode).catch(() => {})
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -96,7 +96,7 @@ const orgName = orgData?.name || 'Unknown Organization'
         .update({ used_by: userId, used_at: new Date().toISOString() })
         .eq('id', invite.id)
 
-      onJoined(invite.orgName)
+      onJoined(orgName)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -182,7 +182,7 @@ const orgName = orgData?.name || 'Unknown Organization'
                   value={joinCode}
                   onChange={e => setJoinCode(e.target.value.toUpperCase())}
                   placeholder="e.g. ABCD1234EFGH"
-                  maxLength={12}
+                  maxLength={16}
                   autoFocus
                   required
                   style={s.codeInput}

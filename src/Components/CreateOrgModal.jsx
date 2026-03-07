@@ -53,6 +53,7 @@ function CreateOrgModal({ userId, onCreated, onClose }) {
               placeholder="e.g. Westside Ultimate"
               autoFocus
               required
+              maxLength={100}
             />
           </div>
           <button type="submit" disabled={saving} style={s.saveBtn}>

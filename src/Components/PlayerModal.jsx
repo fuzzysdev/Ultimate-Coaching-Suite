@@ -54,7 +54,7 @@ function PlayerModal({ player, onSave, onClose }) {
         <form onSubmit={handleSubmit}>
           <div style={s.field}>
             <label style={s.label}>Name *</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Player's full name" autoFocus required />
+            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Player's full name" autoFocus required maxLength={100} />
           </div>
           <div style={s.row}>
             <div style={s.field}>

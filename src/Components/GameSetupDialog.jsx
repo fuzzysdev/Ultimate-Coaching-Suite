@@ -32,6 +32,7 @@ function GameSetupDialog({ onStart, onCancel }) {
               style={s.input}
               autoFocus
               required
+              maxLength={100}
             />
           </div>
 

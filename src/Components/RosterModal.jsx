@@ -32,6 +32,7 @@ function RosterModal({ roster, onSave, onClose }) {
               placeholder="e.g. Varsity 2025"
               autoFocus
               required
+              maxLength={100}
             />
           </div>
           <button type="submit" disabled={saving} style={s.saveBtn}>

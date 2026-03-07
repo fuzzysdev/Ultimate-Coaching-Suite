@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 
 const makeCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  const bytes = new Uint8Array(12)
+  const bytes = new Uint8Array(16)
   crypto.getRandomValues(bytes)
   return Array.from(bytes, b => chars[b % chars.length]).join('')
 }
@@ -37,7 +37,7 @@ function SuperAdminPage({ session }) {
       .maybeSingle()
     if (error) {
       console.error('super_admins query error:', error)
-      setError(`Access check failed: ${error.message} (code: ${error.code})`)
+      setError('Access check failed. Please try again.')
       setIsAdmin(false)
       setLoading(false)
       return
@@ -177,15 +177,6 @@ function SuperAdminPage({ session }) {
         <div style={s.deniedCard}>
           <h1 style={s.deniedTitle}>Access Denied</h1>
           <p style={s.muted}>You do not have super admin privileges.</p>
-          {error && (
-            <p style={{ color: '#ff4d6d', fontSize: '12px', marginTop: '1rem', wordBreak: 'break-all', textAlign: 'left' }}>
-              {error}
-            </p>
-          )}
-          <p style={{ color: '#3a4055', fontSize: '11px', marginTop: '1.5rem', wordBreak: 'break-all', textAlign: 'left', fontFamily: 'monospace' }}>
-            Your session UUID:<br />
-            <span style={{ color: '#7a8099' }}>{session.user.id}</span>
-          </p>
           <button onClick={() => { window.location.href = '/' }} style={s.backBtn}>
             ← Back to App
           </button>
@@ -240,6 +231,7 @@ function SuperAdminPage({ session }) {
               placeholder="Organization name..."
               autoFocus
               required
+              maxLength={100}
               style={s.input}
             />
             <button type="submit" disabled={creating} style={s.saveBtn}>
@@ -272,6 +264,7 @@ function SuperAdminPage({ session }) {
                           if (e.key === 'Enter') handleRenameOrg()
                           if (e.key === 'Escape') setRenamingOrg(null)
                         }}
+                        maxLength={100}
                         style={s.renameInput}
                       />
                     </div>

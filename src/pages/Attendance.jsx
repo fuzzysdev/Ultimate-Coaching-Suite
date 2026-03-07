@@ -253,6 +253,7 @@ export default function AttendancePage({ org, roster }) {
                     if (e.key === "Escape") { setShowAddForm(false); setNewPractice(""); }
                   }}
                   placeholder="e.g. Oct 15"
+                  maxLength={50}
                   style={{
                     background: "#1a1f2e", border: "1px solid #2a2f42", color: "#e8eaf0",
                     fontFamily: font, fontSize: 13, padding: "5px 10px",
