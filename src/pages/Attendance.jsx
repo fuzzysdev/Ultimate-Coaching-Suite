@@ -12,9 +12,37 @@ export default function AttendancePage({ org, roster }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newPractice, setNewPractice] = useState("");
   const saveTimer = useRef(null);
+  // Always-current refs so closures (cleanup, timer) never go stale
+  const attRef = useRef({});
+  const practicesRef = useRef([]);
+  const rosterRef = useRef(roster);
+  const orgRef = useRef(org);
+  useEffect(() => { rosterRef.current = roster; }, [roster]);
+  useEffect(() => { orgRef.current = org; }, [org]);
+
+  // Flush any pending save on unmount (or roster change) so data is never lost
+  useEffect(() => {
+    return () => {
+      if (!saveTimer.current) return;
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      const r = rosterRef.current;
+      const o = orgRef.current;
+      const p = practicesRef.current;
+      const a = attRef.current;
+      if (!r?.id || !o?.id) return;
+      const payload = { roster_id: r.id, organization_id: o.id, practices: p, records: a, updated_at: new Date().toISOString() };
+      offlineStore.setCache(`attendance_${r.id}`, { practices: p, records: a, savedAt: Date.now() });
+      if (navigator.onLine) {
+        supabase.from("attendance_data").upsert(payload, { onConflict: "roster_id" });
+      } else {
+        offlineStore.enqueue(`attendance_${r.id}`, { table: "attendance_data", method: "upsert", conflict: "roster_id", data: payload });
+      }
+    };
+  }, []);
 
   useEffect(() => {
-    if (!roster?.id) { setPlayers([]); setAtt({}); setPractices([]); return; }
+    if (!roster?.id) { setPlayers([]); setAtt({}); setPractices([]); attRef.current = {}; practicesRef.current = []; return; }
 
     // Migrate old localStorage format (pre-DB) if present
     const oldKey = `ucs_attendance_${roster.id}`;
@@ -24,11 +52,12 @@ export default function AttendancePage({ org, roster }) {
         const { practices: p, att: a } = JSON.parse(oldRaw);
         localStorage.removeItem(oldKey);
         if (p?.length) {
-          // Push migrated data to DB and cache
           setPractices(p || []);
           setAtt(a || {});
+          practicesRef.current = p || [];
+          attRef.current = a || {};
           saveToDb(p || [], a || {});
-          offlineStore.setCache(`attendance_${roster.id}`, { practices: p || [], records: a || {} });
+          offlineStore.setCache(`attendance_${roster.id}`, { practices: p || [], records: a || {}, savedAt: Date.now() });
         }
       } catch { localStorage.removeItem(oldKey); }
     } else {
@@ -37,6 +66,8 @@ export default function AttendancePage({ org, roster }) {
       if (cached) {
         setPractices(cached.practices || []);
         setAtt(cached.records || {});
+        practicesRef.current = cached.practices || [];
+        attRef.current = cached.records || {};
       }
     }
 
@@ -47,6 +78,9 @@ export default function AttendancePage({ org, roster }) {
   async function fetchData() {
     try {
       if (!navigator.onLine) return; // cache already applied in useEffect
+      // Skip DB fetch if we have a fresh local write (< 30s) — avoids overwriting unsaved changes
+      const cached = offlineStore.getCache(`attendance_${roster.id}`);
+      if (cached?.savedAt && Date.now() - cached.savedAt < 30000) return;
       const { data, error } = await supabase
         .from("attendance_data")
         .select("practices, records")
@@ -58,7 +92,9 @@ export default function AttendancePage({ org, roster }) {
       const r = data.records || {};
       setPractices(p);
       setAtt(r);
-      offlineStore.setCache(`attendance_${roster.id}`, { practices: p, records: r });
+      practicesRef.current = p;
+      attRef.current = r;
+      offlineStore.setCache(`attendance_${roster.id}`, { practices: p, records: r, savedAt: Date.now() });
     } catch { /* cache already applied */ }
   }
 
@@ -88,8 +124,12 @@ export default function AttendancePage({ org, roster }) {
   }
 
   function scheduleSave(newPractices, newAtt) {
+    // Write to cache immediately so remounting within 800ms still shows correct data
+    if (roster?.id) {
+      offlineStore.setCache(`attendance_${roster.id}`, { practices: newPractices, records: newAtt, savedAt: Date.now() });
+    }
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => saveToDb(newPractices, newAtt), 800);
+    saveTimer.current = setTimeout(() => { saveToDb(newPractices, newAtt); saveTimer.current = null; }, 800);
   }
 
   async function saveToDb(currentPractices, currentAtt) {
@@ -120,22 +160,26 @@ export default function AttendancePage({ org, roster }) {
   }
 
   function cycleState(playerId, date) {
+    const prev = attRef.current;
     const newAtt = {
-      ...att,
-      [playerId]: { ...att[playerId], [date]: ((att[playerId]?.[date] ?? 0) + 1) % 3 },
+      ...prev,
+      [playerId]: { ...prev[playerId], [date]: ((prev[playerId]?.[date] ?? 0) + 1) % 3 },
     };
+    attRef.current = newAtt;
     setAtt(newAtt);
-    scheduleSave(practices, newAtt);
+    scheduleSave(practicesRef.current, newAtt);
   }
 
   function handleAddPractice() {
     const label = newPractice.trim();
-    if (!label || practices.includes(label)) return;
-    const newPractices = [...practices, label];
-    const newAtt = { ...att };
+    if (!label || practicesRef.current.includes(label)) return;
+    const newPractices = [...practicesRef.current, label];
+    const newAtt = { ...attRef.current };
     players.forEach(p => {
       newAtt[p.id] = { ...(newAtt[p.id] || {}), [label]: 0 };
     });
+    practicesRef.current = newPractices;
+    attRef.current = newAtt;
     setPractices(newPractices);
     setAtt(newAtt);
     setNewPractice("");
