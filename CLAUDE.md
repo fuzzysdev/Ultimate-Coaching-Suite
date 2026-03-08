@@ -105,8 +105,21 @@ npm run preview  # Preview production build locally
 
 - Deployed to **Vercel** — `vercel.json` has SPA rewrite (`/*` → `/index.html`) and production security headers (CSP, X-Frame-Options, etc.).
 - The dev server (`vite.config.js`) also sets security headers locally.
-- PWA manifest version is in `vite.config.js` — bump it (e.g. `1.3.0` → `1.4.0`) to force iOS to reload the service worker.
 - Environment: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local` (gitignored). These are safe to use in browser code.
+
+### REQUIRED: Bump manifest version before every git push
+
+iOS Safari caches the PWA aggressively. The only reliable way to force an update is to change the manifest `version` field in `vite.config.js`. **Always increment this before pushing**, using semver patch/minor as appropriate:
+
+```js
+// vite.config.js
+manifest: {
+  version: '1.4.0',  // ← bump this before git push
+  ...
+}
+```
+
+Failure to bump the version means iOS users will continue running the old version until they manually clear their browser cache.
 
 ## SQL Migrations
 
