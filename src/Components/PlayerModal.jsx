@@ -9,7 +9,8 @@ const POSITIONS = [
   { value: 'e', label: 'Either' },
 ]
 
-function PlayerModal({ player, onSave, onClose }) {
+function PlayerModal({ player, roster, onSave, onClose }) {
+  const isAdult = roster?.age_group === 'adult'
   const [name, setName] = useState('')
   const [grade, setGrade] = useState('')
   const [gender, setGender] = useState('')
@@ -32,7 +33,7 @@ function PlayerModal({ player, onSave, onClose }) {
     setError(null)
     setSaving(true)
     try {
-      await onSave({ name: name.trim(), grade, gender, position })
+      await onSave({ name: name.trim(), grade: isAdult ? '' : grade, gender, position })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -57,13 +58,15 @@ function PlayerModal({ player, onSave, onClose }) {
             <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Player's full name" autoFocus required maxLength={100} />
           </div>
           <div style={s.row}>
-            <div style={s.field}>
-              <label style={s.label}>Grade</label>
-              <select value={grade} onChange={e => setGrade(e.target.value)}>
-                <option value="">-- Select --</option>
-                {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-              </select>
-            </div>
+            {!isAdult && (
+              <div style={s.field}>
+                <label style={s.label}>Grade</label>
+                <select value={grade} onChange={e => setGrade(e.target.value)}>
+                  <option value="">-- Select --</option>
+                  {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
+            )}
             <div style={s.field}>
               <label style={s.label}>Gender</label>
               <select value={gender} onChange={e => setGender(e.target.value)}>

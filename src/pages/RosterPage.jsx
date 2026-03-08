@@ -72,8 +72,8 @@ function RosterPage({ roster, onBack }) {
   const s = styles
   return (
     <div style={s.container}>
-      {showPlayerModal && <PlayerModal onSave={handleAddPlayer} onClose={() => setShowPlayerModal(false)} />}
-      {editingPlayer && <PlayerModal player={editingPlayer} onSave={handleEditPlayer} onClose={() => setEditingPlayer(null)} />}
+      {showPlayerModal && <PlayerModal roster={roster} onSave={handleAddPlayer} onClose={() => setShowPlayerModal(false)} />}
+      {editingPlayer && <PlayerModal player={editingPlayer} roster={roster} onSave={handleEditPlayer} onClose={() => setEditingPlayer(null)} />}
       {deletingPlayer && <ConfirmDialog message={`Remove ${deletingPlayer.name} from this roster?`} onConfirm={handleDeletePlayer} onCancel={() => setDeletingPlayer(null)} />}
 
       {/* Page Header */}
@@ -104,7 +104,7 @@ function RosterPage({ roster, onBack }) {
       {players.length > 0 && (
         <div style={s.sortBar}>
           <span style={s.muted}>Sort by:</span>
-          {['name', 'grade', 'gender'].map(field => (
+          {['name', ...(roster.age_group !== 'adult' ? ['grade'] : []), 'gender'].map(field => (
             <button
               key={field}
               onClick={() => setSortField(field)}
@@ -132,7 +132,7 @@ function RosterPage({ roster, onBack }) {
           <table style={s.table}>
             <thead>
               <tr>
-                {['Name', 'Grade', 'Gender', 'Position', ''].map(h => (
+                {['Name', ...(roster.age_group !== 'adult' ? ['Grade'] : []), 'Gender', 'Position', ''].map(h => (
                   <th key={h} style={{ ...s.th, ...(h === '' ? { textAlign: 'right' } : {}) }}>{h}</th>
                 ))}
               </tr>
@@ -141,7 +141,9 @@ function RosterPage({ roster, onBack }) {
               {sortedPlayers.map((player, i) => (
                 <tr key={player.id} style={{ background: i % 2 === 0 ? '#181c26' : '#1a1e2a' }}>
                   <td style={s.td}><strong style={{ color: '#e8eaf0' }}>{player.name}</strong></td>
-                  <td style={s.td}>{player.grade || <span style={s.muted}>—</span>}</td>
+                  {roster.age_group !== 'adult' && (
+                    <td style={s.td}>{player.grade || <span style={s.muted}>—</span>}</td>
+                  )}
                   <td style={s.td}>
                     {player.gender ? (
                       <span style={{

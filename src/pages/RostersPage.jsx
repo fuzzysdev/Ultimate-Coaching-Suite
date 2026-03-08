@@ -21,7 +21,7 @@ function RostersPage({ org, session, onRostersChanged }) {
       setError(null)
       const { data, error } = await supabase
         .from('rosters')
-        .select('id, name, created_at')
+        .select('id, name, age_group, gender_type, created_at')
         .eq('organization_id', org.id)
         .order('created_at', { ascending: false })
       if (error) throw error
@@ -33,9 +33,10 @@ function RostersPage({ org, session, onRostersChanged }) {
     }
   }
 
-  const handleCreateRoster = async (name) => {
+  const handleCreateRoster = async (name, ageGroup, genderType) => {
     const { error } = await supabase.from('rosters').insert({
-      name, organization_id: org.id, created_by: session.user.id
+      name, organization_id: org.id, created_by: session.user.id,
+      age_group: ageGroup, gender_type: genderType
     })
     if (error) throw error
     setShowRosterModal(false)
@@ -43,8 +44,10 @@ function RostersPage({ org, session, onRostersChanged }) {
     onRostersChanged()
   }
 
-  const handleEditRoster = async (name) => {
-    const { error } = await supabase.from('rosters').update({ name }).eq('id', editingRoster.id)
+  const handleEditRoster = async (name, ageGroup, genderType) => {
+    const { error } = await supabase.from('rosters')
+      .update({ name, age_group: ageGroup, gender_type: genderType })
+      .eq('id', editingRoster.id)
     if (error) throw error
     setEditingRoster(null)
     fetchRosters()
@@ -101,7 +104,11 @@ function RostersPage({ org, session, onRostersChanged }) {
           {rosters.map(roster => (
             <div key={roster.id} style={s.card}>
               <h3 style={s.cardTitle}>{roster.name}</h3>
-              <p style={s.muted}>Created {new Date(roster.created_at).toLocaleDateString()}</p>
+              <div style={s.badgeRow}>
+                <span style={s.badge}>{(roster.age_group || 'junior').toUpperCase()}</span>
+                <span style={s.badge}>{(roster.gender_type || 'mixed') === 'mixed' ? 'MIXED' : 'SINGLE GENDER'}</span>
+              </div>
+              <p style={{ ...s.muted, marginTop: '6px' }}>Created {new Date(roster.created_at).toLocaleDateString()}</p>
               <div style={s.cardActions}>
                 <button onClick={() => setViewingRoster(roster)} style={s.viewBtn}>View Players</button>
                 <button onClick={() => setEditingRoster(roster)} style={s.editBtn}>Edit</button>
@@ -136,8 +143,15 @@ const styles = {
   card: { background: '#181c26', border: '1px solid #2a2f42', borderRadius: '10px', padding: '1.25rem' },
   cardTitle: {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: '1.2rem',
-    fontWeight: '700', color: '#e8eaf0', marginBottom: '0.4rem',
+    fontWeight: '700', color: '#e8eaf0', marginBottom: '6px',
     textTransform: 'uppercase', letterSpacing: '0.5px'
+  },
+  badgeRow: { display: 'flex', gap: '6px', flexWrap: 'wrap' },
+  badge: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '10px', fontWeight: '700',
+    letterSpacing: '0.5px', textTransform: 'uppercase', color: '#7a8099',
+    background: '#1f2435', border: '1px solid #2a2f42',
+    padding: '2px 8px', borderRadius: '4px'
   },
   cardActions: { display: 'flex', gap: '0.5rem', marginTop: '1rem' },
   viewBtn: {

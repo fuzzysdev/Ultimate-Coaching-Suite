@@ -60,7 +60,7 @@ function MainShell({ session }) {
   const fetchRosters = async (orgId) => {
     const { data } = await supabase
       .from('rosters')
-      .select('id, name')
+      .select('id, name, age_group, gender_type')
       .eq('organization_id', orgId)
       .order('name')
     const rosterList = data || []

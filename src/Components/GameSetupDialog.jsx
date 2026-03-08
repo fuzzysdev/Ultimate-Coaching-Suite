@@ -1,16 +1,21 @@
 import React, { useState } from 'react'
 
-function GameSetupDialog({ onStart, onCancel }) {
+function GameSetupDialog({ roster, onStart, onCancel }) {
+  const isSingle = roster?.gender_type === 'single'
   const [opponent, setOpponent] = useState('')
   const [firstGender, setFirstGender] = useState('m')
   const [startingAction, setStartingAction] = useState('receive')
   const [direction, setDirection] = useState('right')
+  const [lineSize, setLineSize] = useState(7)
 
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!opponent.trim()) return
-    onStart({ opponent: opponent.trim(), firstGender, startingAction, direction })
+    onStart({ opponent: opponent.trim(), firstGender, startingAction, direction, lineSize, genderType: roster?.gender_type || 'mixed' })
   }
+
+  const mNeed = Math.ceil(lineSize / 2)
+  const fNeed = lineSize - mNeed
 
   const s = styles
   return (
@@ -36,34 +41,54 @@ function GameSetupDialog({ onStart, onCancel }) {
             />
           </div>
 
-          {/* First Gender */}
+          {/* Line Size */}
           <div style={s.field}>
-            <label style={s.label}>First Point Gender Ratio</label>
-            <div style={s.toggleGroup}>
+            <label style={s.label}>Line Size</label>
+            <div style={s.stepper}>
               <button
                 type="button"
-                onClick={() => setFirstGender('m')}
-                style={{ ...s.toggleBtn, ...(firstGender === 'm' ? s.toggleBtnMale : {}) }}
-              >
-                <span style={s.toggleIcon}>♂</span>
-                <div>
-                  <div style={s.toggleTitle}>Male Ratio</div>
-                  <div style={s.toggleSub}>4M / 3F on field</div>
-                </div>
-              </button>
+                onClick={() => setLineSize(ls => Math.max(4, ls - 1))}
+                style={s.stepBtn}
+              >−</button>
+              <span style={s.stepValue}>{lineSize}</span>
               <button
                 type="button"
-                onClick={() => setFirstGender('f')}
-                style={{ ...s.toggleBtn, ...(firstGender === 'f' ? s.toggleBtnFemale : {}) }}
-              >
-                <span style={s.toggleIcon}>♀</span>
-                <div>
-                  <div style={s.toggleTitle}>Female Ratio</div>
-                  <div style={s.toggleSub}>3M / 4F on field</div>
-                </div>
-              </button>
+                onClick={() => setLineSize(ls => Math.min(7, ls + 1))}
+                style={s.stepBtn}
+              >+</button>
             </div>
           </div>
+
+          {/* First Gender Ratio (mixed only) */}
+          {!isSingle && (
+            <div style={s.field}>
+              <label style={s.label}>First Point Gender Ratio</label>
+              <div style={s.toggleGroup}>
+                <button
+                  type="button"
+                  onClick={() => setFirstGender('m')}
+                  style={{ ...s.toggleBtn, ...(firstGender === 'm' ? s.toggleBtnMale : {}) }}
+                >
+                  <span style={s.toggleIcon}>♂</span>
+                  <div>
+                    <div style={s.toggleTitle}>Male Ratio</div>
+                    <div style={s.toggleSub}>{mNeed}M / {fNeed}F on field</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFirstGender('f')}
+                  style={{ ...s.toggleBtn, ...(firstGender === 'f' ? s.toggleBtnFemale : {}) }}
+                >
+                  <span style={s.toggleIcon}>♀</span>
+                  <div>
+                    <div style={s.toggleTitle}>Female Ratio</div>
+                    <div style={s.toggleSub}>{fNeed}M / {mNeed}F on field</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Pull or Receive */}
           <div style={s.field}>
@@ -160,6 +185,17 @@ const styles = {
     color: '#e8eaf0', fontFamily: "'Barlow Condensed', sans-serif",
     fontSize: '16px', padding: '10px 12px', borderRadius: '8px',
     outline: 'none', boxSizing: 'border-box'
+  },
+  stepper: { display: 'flex', alignItems: 'center', gap: '16px' },
+  stepBtn: {
+    width: '40px', height: '40px', background: '#1f2435', border: '1px solid #2a2f42',
+    color: '#e8eaf0', fontSize: '20px', fontWeight: '700', borderRadius: '8px',
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontFamily: "'Barlow Condensed', sans-serif"
+  },
+  stepValue: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '28px',
+    fontWeight: '800', color: '#00e5a0', minWidth: '32px', textAlign: 'center'
   },
   toggleGroup: { display: 'flex', gap: '10px' },
   toggleBtn: {

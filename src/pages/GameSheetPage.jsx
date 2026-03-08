@@ -100,18 +100,22 @@ export default function GameSheetPage({ org, roster }) {
   }
 
   // ── Derived ──────────────────────────────────────────────────────────────
+  const isSingle   = roster?.gender_type === 'single'
   const curIdx     = points.length
   const ourScore   = points.length ? points[points.length - 1].ourScoreAfter   : 0
   const theirScore = points.length ? points[points.length - 1].theirScoreAfter : 0
   const curGender  = setup ? getGenderForPoint(curIdx, setup.firstGender) : 'm'
-  const mNeed      = curGender === 'm' ? 4 : 3
-  const fNeed      = curGender === 'f' ? 4 : 3
+  const lineSize   = setup?.lineSize || 7
+  const halfCeil   = Math.ceil(lineSize / 2)
+  const halfFloor  = lineSize - halfCeil
+  const curMNeed   = curGender === 'm' ? halfCeil : halfFloor
+  const curFNeed   = curGender === 'm' ? halfFloor : halfCeil
   const females    = players.filter(p => p.gender === 'Female')
   const males      = players.filter(p => p.gender === 'Male')
   const curLine    = lines[curIdx] || new Set()
   const selF       = females.filter(p => curLine.has(p.id)).length
   const selM       = males.filter(p => curLine.has(p.id)).length
-  const lineOK     = selF === fNeed && selM === mNeed
+  const lineOK     = isSingle ? curLine.size === lineSize : (selF === curFNeed && selM === curMNeed)
   const totalCols  = Math.max(curIdx + 8, 30)
   const colIndices = Array.from({ length: totalCols }, (_, i) => i)
   const gt         = buildTheme(lightGrid)
@@ -162,15 +166,23 @@ export default function GameSheetPage({ org, roster }) {
     const player = players.find(p => p.id === playerId)
     if (!player) return
 
-    const ptGender = getGenderForPoint(ptIdx, setup.firstGender)
-    const isMale   = player.gender === 'Male'
-    const need     = isMale ? (ptGender === 'm' ? 4 : 3) : (ptGender === 'f' ? 4 : 3)
-    const ptLine   = lines[ptIdx] || new Set()
+    const ptLine = lines[ptIdx] || new Set()
 
     if (!ptLine.has(playerId)) {
-      const group = isMale ? males : females
-      const count = group.filter(p => ptLine.has(p.id)).length
-      if (count >= need) return
+      if (isSingle) {
+        if (ptLine.size >= lineSize) return
+      } else {
+        const ptGender  = getGenderForPoint(ptIdx, setup.firstGender)
+        const ptHCeil   = Math.ceil(lineSize / 2)
+        const ptHFloor  = lineSize - ptHCeil
+        const isMale    = player.gender === 'Male'
+        const need      = isMale
+          ? (ptGender === 'm' ? ptHCeil : ptHFloor)
+          : (ptGender === 'm' ? ptHFloor : ptHCeil)
+        const group  = isMale ? males : females
+        const count  = group.filter(p => ptLine.has(p.id)).length
+        if (count >= need) return
+      }
     }
 
     setLines(prev => {
@@ -221,6 +233,7 @@ export default function GameSheetPage({ org, roster }) {
       organization_id: org.id, roster_id: roster.id,
       opponent: setupData.opponent, first_gender: setupData.firstGender,
       starting_action: setupData.startingAction, direction: setupData.direction,
+      line_size: setupData.lineSize,
     }).select().single()
     if (error) { console.error(error); return }
     setGame(data); setSetup(setupData); setPoints([]); setLines({})
@@ -241,7 +254,7 @@ export default function GameSheetPage({ org, roster }) {
   if (!setup) {
     return (
       <div style={S.emptyState}>
-        {showSetup && <GameSetupDialog onStart={handleStartGame} onCancel={() => setShowSetup(false)} />}
+        {showSetup && <GameSetupDialog roster={roster} onStart={handleStartGame} onCancel={() => setShowSetup(false)} />}
         <div style={{ fontSize: 52 }}>🥏</div>
         <h2 style={S.emptyTitle}>No Active Game</h2>
         <p style={S.emptySub}>{!roster ? 'Select a roster first.' : 'Start a new game to open the sheet.'}</p>
@@ -278,12 +291,18 @@ export default function GameSheetPage({ org, roster }) {
         <div style={S.headerCenter}>
           <div style={S.vsLine}>vs {setup.opponent}</div>
           <div style={S.infoLine}>
-            <span style={{ ...S.genBadge, ...(curGender === 'm' ? S.genM : S.genF) }}>
-              {curGender === 'm' ? '♂' : '♀'} Pt {curIdx + 1}
-            </span>
+            {isSingle ? (
+              <span style={{ ...S.genBadge, background: 'rgba(0,229,160,0.15)', color: '#00e5a0' }}>
+                Pt {curIdx + 1}
+              </span>
+            ) : (
+              <span style={{ ...S.genBadge, ...(curGender === 'm' ? S.genM : S.genF) }}>
+                {curGender === 'm' ? '♂' : '♀'} Pt {curIdx + 1}
+              </span>
+            )}
             <span style={S.infoText}>{nextDir()} {pullReceive()}</span>
-            <span style={S.lineCount(lineOK, selF > fNeed || selM > mNeed)}>
-              {selF}/{fNeed}F · {selM}/{mNeed}M
+            <span style={S.lineCount(lineOK, !isSingle && (selF > curFNeed || selM > curMNeed))}>
+              {isSingle ? `${curLine.size}/${lineSize}` : `${selF}/${curFNeed}F · ${selM}/${curMNeed}M`}
             </span>
           </div>
         </div>
@@ -352,48 +371,65 @@ export default function GameSheetPage({ org, roster }) {
             ))}
           </div>
 
-          {/* Gender row */}
-          <div style={{ ...S.row, position: 'sticky', top: HDR_H, zIndex: 8, background: gt.headerBg }}>
-            <div style={{ ...stickyName(gt.headerBg), height: HDR_H, display: 'flex', alignItems: 'center',
-              paddingLeft: 6, fontSize: 9, fontWeight: 700, letterSpacing: 1,
-              color: lightGrid ? '#8090b0' : '#4a5068',
-              textTransform: 'uppercase', fontFamily: "'Barlow Condensed', sans-serif" }}>
-              GENDER
+          {/* Gender row — mixed only */}
+          {!isSingle && (
+            <div style={{ ...S.row, position: 'sticky', top: HDR_H, zIndex: 8, background: gt.headerBg }}>
+              <div style={{ ...stickyName(gt.headerBg), height: HDR_H, display: 'flex', alignItems: 'center',
+                paddingLeft: 6, fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                color: lightGrid ? '#8090b0' : '#4a5068',
+                textTransform: 'uppercase', fontFamily: "'Barlow Condensed', sans-serif" }}>
+                GENDER
+              </div>
+              {colIndices.map(i => {
+                const g = getGenderForPoint(i, setup.firstGender)
+                return (
+                  <div key={i} style={{ ...colCell(i), height: HDR_H, lineHeight: HDR_H + 'px',
+                    fontSize: 10, fontWeight: 800,
+                    color: g === 'm' ? '#4d9fff' : '#ff80c8',
+                    fontFamily: "'Barlow Condensed', sans-serif" }}>
+                    {g === 'm' ? 'M' : 'F'}
+                  </div>
+                )
+              })}
             </div>
-            {colIndices.map(i => {
-              const g = getGenderForPoint(i, setup.firstGender)
-              return (
-                <div key={i} style={{ ...colCell(i), height: HDR_H, lineHeight: HDR_H + 'px',
-                  fontSize: 10, fontWeight: 800,
-                  color: g === 'm' ? '#4d9fff' : '#ff80c8',
-                  fontFamily: "'Barlow Condensed', sans-serif" }}>
-                  {g === 'm' ? 'M' : 'F'}
-                </div>
-              )
-            })}
-          </div>
+          )}
 
-          {/* ── Female section ── */}
-          <SectionRow label="FEMALE" color="#ff80c8" stickyName={stickyName} colIndices={colIndices}
-            colBgFn={(i, cur) => colBg(i, cur, lightGrid)} curIdx={curIdx} secH={SEC_H} gt={gt} />
-          {females.map(p => (
-            <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
-              stickyName={stickyName} colCell={colCell} onToggle={toggleCell} rowH={ROW_H}
-              status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
-              gt={gt} lightGrid={lightGrid} />
-          ))}
-          {females.length === 0 && <EmptySection label="No female players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} gt={gt} />}
+          {/* ── Player sections ── */}
+          {isSingle ? (
+            <>
+              {players.map(p => (
+                <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
+                  stickyName={stickyName} colCell={colCell} onToggle={toggleCell} rowH={ROW_H}
+                  status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
+                  gt={gt} lightGrid={lightGrid} />
+              ))}
+              {players.length === 0 && <EmptySection label="No players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} gt={gt} />}
+            </>
+          ) : (
+            <>
+              {/* ── Female section ── */}
+              <SectionRow label="FEMALE" color="#ff80c8" stickyName={stickyName} colIndices={colIndices}
+                colBgFn={(i, cur) => colBg(i, cur, lightGrid)} curIdx={curIdx} secH={SEC_H} gt={gt} />
+              {females.map(p => (
+                <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
+                  stickyName={stickyName} colCell={colCell} onToggle={toggleCell} rowH={ROW_H}
+                  status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
+                  gt={gt} lightGrid={lightGrid} />
+              ))}
+              {females.length === 0 && <EmptySection label="No female players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} gt={gt} />}
 
-          {/* ── Male section ── */}
-          <SectionRow label="MALE" color="#4d9fff" stickyName={stickyName} colIndices={colIndices}
-            colBgFn={(i, cur) => colBg(i, cur, lightGrid)} curIdx={curIdx} secH={SEC_H} gt={gt} />
-          {males.map(p => (
-            <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
-              stickyName={stickyName} colCell={colCell} onToggle={toggleCell} rowH={ROW_H}
-              status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
-              gt={gt} lightGrid={lightGrid} />
-          ))}
-          {males.length === 0 && <EmptySection label="No male players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} gt={gt} />}
+              {/* ── Male section ── */}
+              <SectionRow label="MALE" color="#4d9fff" stickyName={stickyName} colIndices={colIndices}
+                colBgFn={(i, cur) => colBg(i, cur, lightGrid)} curIdx={curIdx} secH={SEC_H} gt={gt} />
+              {males.map(p => (
+                <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
+                  stickyName={stickyName} colCell={colCell} onToggle={toggleCell} rowH={ROW_H}
+                  status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
+                  gt={gt} lightGrid={lightGrid} />
+              ))}
+              {males.length === 0 && <EmptySection label="No male players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} gt={gt} />}
+            </>
+          )}
 
           {/* ── Score rows ── */}
           <div style={{ ...S.row, borderTop: `1px solid ${lightGrid ? '#c8ccd8' : '#2a2f42'}`, marginTop: 2 }}>
