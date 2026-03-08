@@ -44,6 +44,12 @@ export default function AttendancePage({ org, roster }) {
   useEffect(() => {
     if (!roster?.id) { setPlayers([]); setAtt({}); setPractices([]); attRef.current = {}; practicesRef.current = []; return; }
 
+    // Clear previous roster's data immediately so stale dates never show
+    setPractices([]);
+    setAtt({});
+    attRef.current = {};
+    practicesRef.current = [];
+
     // Migrate old localStorage format (pre-DB) if present
     const oldKey = `ucs_attendance_${roster.id}`;
     const oldRaw = localStorage.getItem(oldKey);
@@ -187,6 +193,22 @@ export default function AttendancePage({ org, roster }) {
     scheduleSave(newPractices, newAtt);
   }
 
+  function removePractice(label) {
+    const newPractices = practicesRef.current.filter(p => p !== label);
+    const newAtt = {};
+    Object.keys(attRef.current).forEach(playerId => {
+      const playerAtt = { ...attRef.current[playerId] };
+      delete playerAtt[label];
+      newAtt[playerId] = playerAtt;
+    });
+    practicesRef.current = newPractices;
+    attRef.current = newAtt;
+    setPractices(newPractices);
+    setAtt(newAtt);
+    if (highlighted === label) setHighlighted(null);
+    scheduleSave(newPractices, newAtt);
+  }
+
   function getCellStyle(state) {
     if (state === 1) return { bg: "#0a3d2b", border: "#00e5a0", color: "#00e5a0", label: "✓" };
     if (state === 2) return { bg: "#2a2410", border: "#7a4a0a", color: "#fbbf24", label: "" };
@@ -319,7 +341,20 @@ export default function AttendancePage({ org, roster }) {
                           background: highlighted === d ? "rgba(0,229,160,0.06)" : "transparent",
                           transition: "all 0.15s"
                         }}>
-                        <div>{d}</div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                          <span>{d}</span>
+                          {highlighted === d && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); removePractice(d); }}
+                              title="Remove this session"
+                              style={{
+                                background: "none", border: "none", color: "#ff4d6d",
+                                cursor: "pointer", fontSize: 13, fontWeight: 900,
+                                padding: "0 1px", lineHeight: 1, flexShrink: 0
+                              }}
+                            >×</button>
+                          )}
+                        </div>
                         <div style={{ fontSize: 9, color: "#7a8099", fontWeight: 400, marginTop: 2, lineHeight: 1.4 }}>
                           <span style={{ color: "#00e5a0" }}>{s.present}</span>
                           {s.excused > 0 && <span style={{ color: "#fbbf24" }}> +{s.excused}E</span>}
