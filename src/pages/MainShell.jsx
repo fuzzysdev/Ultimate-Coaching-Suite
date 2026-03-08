@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import InviteModal from '../Components/InviteModal'
 import CreateOrgModal from '../Components/CreateOrgModal'
+import UserProfileModal from '../Components/UserProfileModal'
 import RostersPage from './RostersPage'
 import TryoutsPage from './TryoutsPage'
 import GameSheetPage from './GameSheetPage'
@@ -26,6 +27,7 @@ function MainShell({ session }) {
   const [currentApp, setCurrentApp] = useState('rosters')
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [showCreateOrgModal, setShowCreateOrgModal] = useState(false)
+  const [showProfileModal, setShowProfileModal] = useState(false)
   const [joinedOrgName, setJoinedOrgName] = useState(null)
   const [loadingOrgs, setLoadingOrgs] = useState(true)
   const isOnline = useOnlineStatus()
@@ -157,6 +159,14 @@ function MainShell({ session }) {
           }}
         />
       )}
+      {showProfileModal && (
+        <UserProfileModal
+          session={session}
+          onClose={() => setShowProfileModal(false)}
+          onRostersRefresh={() => fetchRosters(selectedOrg?.id)}
+          onSignOut={handleLogout}
+        />
+      )}
 
       {/* Offline banner */}
       {!isOnline && (
@@ -226,10 +236,15 @@ function MainShell({ session }) {
           </button>
         </div>
 
-        {/* Right — user + logout */}
+        {/* Right — profile button */}
         <div style={s.headerRight}>
-          <span style={s.userEmail}>{session.user.email}</span>
-          <button onClick={handleLogout} style={s.logoutBtn}>Sign Out</button>
+          <button
+            onClick={() => setShowProfileModal(true)}
+            style={s.profileBtn}
+            title={session.user.email}
+          >
+            🥏
+          </button>
         </div>
       </header>
 
@@ -311,13 +326,10 @@ const styles = {
     fontWeight: '800', padding: '10px 14px', borderRadius: '6px', cursor: 'pointer',
     textTransform: 'uppercase', letterSpacing: '0.5px', minHeight: 40
   },
-  headerRight: { display: 'flex', alignItems: 'center', gap: '10px' },
-  userEmail: { color: '#7a8099', fontSize: '12px' },
-  logoutBtn: {
-    background: '#1f2435', border: '1px solid #2a2f42', color: '#7a8099',
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '12px', fontWeight: '700',
-    padding: '6px 12px', borderRadius: '6px', textTransform: 'uppercase',
-    letterSpacing: '0.5px', cursor: 'pointer'
+  headerRight: { display: 'flex', alignItems: 'center' },
+  profileBtn: {
+    background: 'none', border: 'none', fontSize: '24px', lineHeight: 1,
+    cursor: 'pointer', padding: '4px', borderRadius: '6px', flexShrink: 0
   },
   nav: {
     background: '#181c26', borderBottom: '1px solid #2a2f42',
