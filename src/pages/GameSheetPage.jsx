@@ -11,7 +11,7 @@ function getGenderForPoint(i, first) {
 }
 
 const NAME_W  = 90   // px — sticky name column
-const COL_W   = 36   // px — each point column (wider for pencil/touch)
+const COL_W   = 44   // px — each point column (wider for pencil/touch)
 const HDR_H   = 24   // px — pt# and gender header rows
 const SEC_H   = 20   // px — section label row height
 const ROW_H   = 38   // px — player row height (touch-friendly)
@@ -204,28 +204,63 @@ export default function GameSheetPage({ org, roster }) {
     })
   }
 
-  const recordPoint = async (scoredBy) => {
+  const recordPoint = (scoredBy) => {
     if (!game) return
     const newOur   = scoredBy === 'us'   ? ourScore + 1 : ourScore
     const newTheir = scoredBy === 'them' ? theirScore + 1 : theirScore
-    await supabase.from('game_points').insert({
-      game_id: game.id, point_number: curIdx, gender: curGender,
-      scored_by: scoredBy, player_ids: [...curLine],
-      our_score_after: newOur, their_score_after: newTheir,
-    })
-    await supabase.from('games').update({ our_score: newOur, their_score: newTheir }).eq('id', game.id)
-    setPoints(prev => [...prev, { gender: curGender, scoredBy, ourScoreAfter: newOur, theirScoreAfter: newTheir }])
+    const pointNum = curIdx
+    const pointGender = curGender
+    const lineSnapshot = [...curLine]
+
+    // Optimistic update — instant UI
+    setPoints(prev => [...prev, { gender: pointGender, scoredBy, ourScoreAfter: newOur, theirScoreAfter: newTheir }])
     scrollToCurrent()
+
+    // Background DB writes — don't await, don't block UI
+    supabase.from('game_points').insert({
+      game_id: game.id, point_number: pointNum, gender: pointGender,
+      scored_by: scoredBy, player_ids: lineSnapshot,
+      our_score_after: newOur, their_score_after: newTheir,
+    }).then(({ error }) => { if (error) console.error('game_points insert:', error) })
+
+    supabase.from('games').update({ our_score: newOur, their_score: newTheir })
+      .eq('id', game.id)
+      .then(({ error }) => { if (error) console.error('games score update:', error) })
   }
 
-  const useTimeout = async (team) => {
+  const undoPoint = () => {
+    if (!game || points.length === 0) return
+    const lastIdx = points.length - 1  // point_number of the point to remove
+
+    // Optimistic update — remove last point from state immediately
+    setPoints(prev => prev.slice(0, -1))
+
+    // Background DB: delete the game_point row
+    supabase.from('game_points')
+      .delete()
+      .eq('game_id', game.id)
+      .eq('point_number', lastIdx)
+      .then(({ error }) => { if (error) console.error('undo game_points delete:', error) })
+
+    // Restore score to previous point (or 0 if no points left)
+    const prevOur   = lastIdx > 0 ? points[lastIdx - 1].ourScoreAfter   : 0
+    const prevTheir = lastIdx > 0 ? points[lastIdx - 1].theirScoreAfter : 0
+    supabase.from('games')
+      .update({ our_score: prevOur, their_score: prevTheir })
+      .eq('id', game.id)
+      .then(({ error }) => { if (error) console.error('undo games score update:', error) })
+  }
+
+  const useTimeout = (team) => {
     if (!game) return
     if (team === 'us'   && ourTO   >= MAX_TO) return
     if (team === 'them' && theirTO >= MAX_TO) return
     const nOur  = team === 'us'   ? ourTO + 1   : ourTO
     const nThem = team === 'them' ? theirTO + 1 : theirTO
     setOurTO(nOur); setTheirTO(nThem)
-    await supabase.from('games').update({ our_timeouts_used: nOur, their_timeouts_used: nThem }).eq('id', game.id)
+    supabase.from('games').update({ our_timeouts_used: nOur, their_timeouts_used: nThem })
+      .eq('id', game.id)
+      .then(({ error }) => { if (error) console.error('timeout update:', error) })
   }
 
   const handleStartGame = async (setupData) => {
@@ -333,6 +368,9 @@ export default function GameSheetPage({ org, roster }) {
         </button>
         <button onClick={() => recordPoint('them')} style={S.btnThem}>
           ▲ They Scored
+        </button>
+        <button onClick={undoPoint} style={S.btnUndo} disabled={points.length === 0}>
+          ↩ Undo
         </button>
         <button onClick={() => setShowEndDialog(true)} style={S.btnEnd}>End</button>
         <button
@@ -529,6 +567,7 @@ function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, onT
   const unavailable = !!status
   const borderColor = status === 'injured' ? '#f0a500' : status === 'away' ? '#4a5068' : 'transparent'
   const rowOpacity  = status === 'away' ? 0.28 : status === 'injured' ? 0.45 : 1
+  const pdRef = useRef(null)
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', opacity: rowOpacity }}>
@@ -567,15 +606,24 @@ function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, onT
       {colIndices.map(i => {
         const selected = lines[i]?.has(player.id) || false
         const isPast   = i < curIdx
+        const interactive = !unavailable && !isPast
         return (
           <div key={i}
-            onClick={() => !unavailable && onToggle(player.id, i)}
+            onPointerDown={interactive ? (e) => { pdRef.current = { x: e.clientX, y: e.clientY } } : undefined}
+            onPointerUp={interactive ? (e) => {
+              if (!pdRef.current) return
+              const dx = e.clientX - pdRef.current.x
+              const dy = e.clientY - pdRef.current.y
+              if (Math.sqrt(dx*dx + dy*dy) < 8) onToggle(player.id, i)
+              pdRef.current = null
+            } : undefined}
             style={{ ...colCell(i), height: rowH, borderBottom: `1px solid ${gt.rowBorder}`,
-              cursor: unavailable || isPast ? 'default' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              cursor: interactive ? 'pointer' : 'default',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              touchAction: interactive ? 'none' : 'auto' }}>
             {selected && (
               <div style={{
-                width: 14, height: 14, borderRadius: 3,
+                width: 16, height: 16, borderRadius: 3,
                 background: cellFill(true, i, curIdx, lightGrid),
                 border: i > curIdx ? `1px dashed ${lightGrid ? 'rgba(0,160,110,0.4)' : 'rgba(0,229,160,0.4)'}` : 'none',
               }} />
@@ -679,6 +727,11 @@ const S = {
     flex: 1, background: 'transparent', border: '1px solid #2a2f42', color: '#7a8099',
     borderRadius: 7, fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13,
     fontWeight: 700, padding: '8px 0', textTransform: 'uppercase', cursor: 'pointer'
+  },
+  btnUndo: {
+    flex: 1, background: 'transparent', border: '1px solid #4a5068', color: '#7a8099',
+    borderRadius: 7, fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13,
+    fontWeight: 700, padding: '8px 0', textTransform: 'uppercase', cursor: 'pointer',
   },
   btnLight: {
     background: 'transparent', border: '1px solid #2a2f42', borderRadius: 7,

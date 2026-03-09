@@ -34,7 +34,7 @@ export default defineConfig({
         name: 'Ultimate Coaching Suite',
         short_name: 'UCS',
         description: 'A suite of apps for ultimate frisbee coaching',
-        version: '1.5.1',
+        version: '1.5.2',
         theme_color: '#0f1117',
         background_color: '#0f1117',
         start_url: '/',
