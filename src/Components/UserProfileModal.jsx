@@ -146,6 +146,9 @@ function UserProfileModal({ session, onClose, onRostersRefresh, onSignOut }) {
         {/* Sign Out */}
         <button onClick={onSignOut} style={s.signOutBtn}>Sign Out</button>
 
+        {/* Version */}
+        <div style={s.version}>v{__APP_VERSION__}</div>
+
       </div>
     </div>
   )
@@ -224,6 +227,11 @@ const styles = {
     color: '#00e5a0', fontWeight: '700', margin: 0
   },
   muted: { color: '#7a8099', fontSize: '13px', margin: 0 },
+  version: {
+    textAlign: 'center', marginTop: 16,
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '11px',
+    color: '#3a3f52', letterSpacing: '1px'
+  },
   error: {
     background: 'rgba(255,77,109,0.1)', border: '1px solid rgba(255,77,109,0.3)',
     color: '#ff4d6d', padding: '0.75rem', borderRadius: '8px', fontSize: '0.9rem'

@@ -2,7 +2,12 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const APP_VERSION = '1.5.4'
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
   server: {
     headers: {
       'X-Content-Type-Options': 'nosniff',
@@ -34,7 +39,7 @@ export default defineConfig({
         name: 'Ultimate Coaching Suite',
         short_name: 'UCS',
         description: 'A suite of apps for ultimate frisbee coaching',
-        version: '1.5.3',
+        version: APP_VERSION,
         theme_color: '#0f1117',
         background_color: '#0f1117',
         start_url: '/',
