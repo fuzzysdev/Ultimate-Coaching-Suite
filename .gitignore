@@ -30,3 +30,6 @@ dist-ssr
 
 # Supabase SQL migration files — run manually in the SQL Editor
 *.sql
+
+# Claude Code local settings
+.claude/

@@ -132,6 +132,25 @@ All free-text inputs have HTML `maxLength` enforced:
 - Practice/session label: **50 chars**
 - Invite code input: **16 chars** (codes are 16-char uppercase alphanumeric)
 
+## Pre-Approved Commands
+
+The following Bash commands are pre-approved and should never prompt for confirmation:
+
+```
+git status
+git diff *
+git log *
+git add *
+git commit *
+git push *
+git pull *
+git branch *
+git checkout *
+git stash *
+npx vite *
+npm run *
+```
+
 ## Security Notes
 
 - Invite codes: 16 bytes of `crypto.getRandomValues`, mapped to a 32-char alphabet = 80 bits entropy.
