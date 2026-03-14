@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import GameSetupDialog from '../Components/GameSetupDialog'
 import GameEndDialog from '../Components/GameEndDialog'
@@ -84,9 +84,7 @@ export default function GameSheetPage({ org, roster }) {
   const [lightGrid,      setLightGrid]      = useState(false)
   const [completedGames, setCompletedGames] = useState([])
 
-  const gridRef     = useRef(null)
-  const scoreBarRef = useRef(null)
-  const syncingRef  = useRef(false)
+  const gridRef = useRef(null)
 
   // Persist working state to localStorage so tab-switching doesn't lose progress
   useEffect(() => {
@@ -232,24 +230,9 @@ export default function GameSheetPage({ org, roster }) {
   }
   const pullReceive = () => {
     if (!setup) return ''
-    const weStart = setup.startingAction === 'receive'
-    return (points.length % 2 === 0) === weStart ? 'Receive' : 'Pull'
+    if (points.length === 0) return setup.startingAction === 'receive' ? 'Receive' : 'Pull'
+    return points[points.length - 1].scoredBy === 'us' ? 'Pull' : 'Receive'
   }
-
-  // ── Scroll sync ──────────────────────────────────────────────────────────
-  const onGridScroll = useCallback((e) => {
-    if (syncingRef.current || !scoreBarRef.current) return
-    syncingRef.current = true
-    scoreBarRef.current.scrollLeft = e.target.scrollLeft
-    syncingRef.current = false
-  }, [])
-
-  const onScoreScroll = useCallback((e) => {
-    if (syncingRef.current || !gridRef.current) return
-    syncingRef.current = true
-    gridRef.current.scrollLeft = e.target.scrollLeft
-    syncingRef.current = false
-  }, [])
 
   const scrollToCurrent = () => {
     setTimeout(() => {
@@ -293,8 +276,6 @@ export default function GameSheetPage({ org, roster }) {
       return { ...prev, [ptIdx]: s }
     })
   }
-
-  const toggleCurLine = (playerId) => toggleCell(playerId, curIdx)
 
   const cycleStatus = (playerId) => {
     const cur = playerStatus[playerId]
@@ -525,13 +506,6 @@ export default function GameSheetPage({ org, roster }) {
               {lightGrid ? '🌙' : '☀️'}
             </button>
           </div>
-          {/* ── Line Builder ── */}
-          <LineBuilder
-            players={players} males={males} females={females} isSingle={isSingle}
-            curLine={curLine} onToggle={toggleCurLine} playerStatus={playerStatus}
-            lineSize={lineSize} curFNeed={curFNeed} curMNeed={curMNeed}
-            selF={selF} selM={selM} lineOK={lineOK} gt={gt} lightGrid={lightGrid}
-          />
         </>
       )}
 
@@ -539,7 +513,7 @@ export default function GameSheetPage({ org, roster }) {
       {loadingPlayers ? (
         <div style={S.loading}>Loading...</div>
       ) : (
-        <div style={{ ...S.gridWrap, background: gt.gridBg }} ref={gridRef} onScroll={onGridScroll}>
+        <div style={{ ...S.gridWrap, background: gt.gridBg }} ref={gridRef}>
 
           {/* Pt # header row */}
           <div style={{ ...S.row, position: 'sticky', top: 0, zIndex: 8, background: gt.headerBg }}>
@@ -592,6 +566,7 @@ export default function GameSheetPage({ org, roster }) {
                 <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
                   stickyName={stickyName} colCell={colCell} rowH={ROW_H}
                   status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
+                  onToggle={toggleCell} readOnly={readOnly}
                   gt={gt} lightGrid={lightGrid} />
               ))}
               {players.length === 0 && <EmptySection label="No players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} gt={gt} />}
@@ -605,6 +580,7 @@ export default function GameSheetPage({ org, roster }) {
                 <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
                   stickyName={stickyName} colCell={colCell} rowH={ROW_H}
                   status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
+                  onToggle={toggleCell} readOnly={readOnly}
                   gt={gt} lightGrid={lightGrid} />
               ))}
               {females.length === 0 && <EmptySection label="No female players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} gt={gt} />}
@@ -616,6 +592,7 @@ export default function GameSheetPage({ org, roster }) {
                 <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
                   stickyName={stickyName} colCell={colCell} rowH={ROW_H}
                   status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
+                  onToggle={toggleCell} readOnly={readOnly}
                   gt={gt} lightGrid={lightGrid} />
               ))}
               {males.length === 0 && <EmptySection label="No male players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} gt={gt} />}
@@ -671,26 +648,6 @@ export default function GameSheetPage({ org, roster }) {
         </div>
       )}
 
-      {/* ── Score Bar (synced scroll) ── */}
-      <div style={S.scoreBarOuter}>
-        <div style={S.scoreBarInner} ref={scoreBarRef} onScroll={onScoreScroll}>
-          <div style={{ ...S.sbNameCell }}>Score →</div>
-          {colIndices.map(i => {
-            const pt = points[i]
-            return (
-              <div key={i} style={{
-                width: COL_W, minWidth: COL_W, flexShrink: 0, textAlign: 'center',
-                fontSize: 11, fontFamily: "'Barlow Condensed', sans-serif",
-                fontWeight: i === curIdx ? 800 : 500,
-                color: i === curIdx ? '#00e5a0' : pt ? '#e8eaf0' : '#2a2f42',
-                background: colBg(i, curIdx),
-              }}>
-                {pt ? `${pt.ourScoreAfter}-${pt.theirScoreAfter}` : i === curIdx ? '·' : ''}
-              </div>
-            )
-          })}
-        </div>
-      </div>
     </div>
   )
 }
@@ -716,7 +673,7 @@ function SectionRow({ label, color, stickyName, colIndices, colBgFn, curIdx, sec
   )
 }
 
-function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, rowH, status, onStatusChange, gt, lightGrid }) {
+function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, rowH, status, onStatusChange, onToggle, readOnly, gt, lightGrid }) {
   const unavailable = !!status
   const borderColor = status === 'injured' ? '#f0a500' : status === 'away' ? '#4a5068' : 'transparent'
   const rowOpacity  = status === 'away' ? 0.28 : status === 'injured' ? 0.45 : 1
@@ -757,92 +714,35 @@ function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, row
 
       {colIndices.map(i => {
         const selected = lines[i]?.has(player.id) || false
+        const isInteractive = !readOnly && i >= curIdx && !unavailable
+        const dot = selected ? (
+          <div style={{
+            width: 16, height: 16, borderRadius: 3,
+            background: cellFill(true, i, curIdx, lightGrid),
+            border: i > curIdx ? `1px dashed ${lightGrid ? 'rgba(0,160,110,0.4)' : 'rgba(0,229,160,0.4)'}` : 'none',
+            pointerEvents: 'none',
+          }} />
+        ) : null
+
+        if (isInteractive) {
+          return (
+            <button key={i} onClick={() => onToggle(player.id, i)}
+              style={{ ...colCell(i), height: rowH,
+                borderTop: 'none', borderLeft: 'none', borderRight: 'none',
+                borderBottom: `1px solid ${gt.rowBorder}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: 0, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
+              {dot}
+            </button>
+          )
+        }
         return (
-          <div key={i}
-            style={{ ...colCell(i), height: rowH, borderBottom: `1px solid ${gt.rowBorder}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {selected && (
-              <div style={{
-                width: 16, height: 16, borderRadius: 3,
-                background: cellFill(true, i, curIdx, lightGrid),
-                border: i > curIdx ? `1px dashed ${lightGrid ? 'rgba(0,160,110,0.4)' : 'rgba(0,229,160,0.4)'}` : 'none',
-              }} />
-            )}
+          <div key={i} style={{ ...colCell(i), height: rowH, borderBottom: `1px solid ${gt.rowBorder}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {dot}
           </div>
         )
       })}
-    </div>
-  )
-}
-
-function LineBuilder({ players, males, females, isSingle, curLine, onToggle, playerStatus, lineSize, curFNeed, curMNeed, selF, selM, lineOK, gt, lightGrid }) {
-  const over = !isSingle && (selF > curFNeed || selM > curMNeed)
-
-  const ChipRow = ({ list, genderColor }) => list.map(p => {
-    const sel  = curLine.has(p.id)
-    const off  = !!playerStatus[p.id]
-    const firstName = p.name.split(' ')[0]
-    return (
-      <button
-        key={p.id}
-        onClick={() => !off && onToggle(p.id)}
-        disabled={off}
-        style={{
-          height: 30, padding: '0 9px', borderRadius: 5, border: 'none',
-          fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 800,
-          textTransform: 'uppercase', letterSpacing: 0.3, cursor: off ? 'default' : 'pointer',
-          flexShrink: 0, whiteSpace: 'nowrap',
-          opacity: off ? 0.25 : 1,
-          background: sel
-            ? (genderColor || (lightGrid ? '#00c896' : '#00e5a0'))
-            : (lightGrid ? '#e0e3ef' : '#1f2435'),
-          color: sel
-            ? (genderColor ? '#fff' : '#0f1117')
-            : (lightGrid ? '#5060a0' : '#7a8099'),
-          transition: 'background 0.1s, color 0.1s',
-        }}
-      >
-        {firstName}
-      </button>
-    )
-  })
-
-  const countColor = over ? '#ff4d6d' : lineOK ? '#00e5a0' : (lightGrid ? '#7a8099' : '#4a5068')
-  const countText  = isSingle
-    ? `${curLine.size}/${lineSize}`
-    : `${selF}/${curFNeed}F · ${selM}/${curMNeed}M`
-
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 8,
-      background: lightGrid ? '#eaecf2' : '#181c26',
-      borderBottom: `1px solid ${lightGrid ? '#b8bdd0' : '#2a2f42'}`,
-      padding: '6px 10px', flexShrink: 0, minHeight: 46,
-    }}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, minWidth: 36 }}>
-        <span style={{
-          fontFamily: "'Barlow Condensed', sans-serif", fontSize: 8, fontWeight: 800,
-          color: lightGrid ? '#8090b0' : '#4a5068', textTransform: 'uppercase', letterSpacing: 1,
-        }}>LINE</span>
-        <span style={{
-          fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, fontWeight: 800, color: countColor,
-        }}>{countText}</span>
-        {lineOK && <span style={{ fontSize: 10, color: '#00e5a0' }}>✓</span>}
-      </div>
-      <div style={{ width: 1, alignSelf: 'stretch', background: lightGrid ? '#b8bdd0' : '#2a2f42', flexShrink: 0 }} />
-      <div style={{ display: 'flex', gap: 5, overflowX: 'auto', alignItems: 'center', flex: 1, scrollbarWidth: 'none' }}>
-        {isSingle ? (
-          <ChipRow list={players} />
-        ) : (
-          <>
-            <ChipRow list={females} genderColor="#cc5faa" />
-            {females.length > 0 && males.length > 0 && (
-              <div style={{ width: 1, height: 22, background: lightGrid ? '#b8bdd0' : '#2a2f42', flexShrink: 0 }} />
-            )}
-            <ChipRow list={males} genderColor="#3d7fd4" />
-          </>
-        )}
-      </div>
     </div>
   )
 }
@@ -961,22 +861,6 @@ const S = {
     flex: 1, overflowX: 'auto', overflowY: 'auto', minHeight: 0
   },
   row: { display: 'flex', alignItems: 'stretch' },
-
-  // Score bar
-  scoreBarOuter: {
-    background: '#181c26', borderTop: '2px solid #2a2f42', flexShrink: 0
-  },
-  scoreBarInner: {
-    display: 'flex', alignItems: 'center', overflowX: 'auto',
-    padding: '6px 0', scrollbarWidth: 'none'
-  },
-  sbNameCell: {
-    width: NAME_W, minWidth: NAME_W, flexShrink: 0,
-    paddingLeft: 6, fontSize: 9, fontWeight: 700, color: '#4a5068',
-    textTransform: 'uppercase', letterSpacing: 1,
-    fontFamily: "'Barlow Condensed', sans-serif",
-    position: 'sticky', left: 0, background: '#181c26', zIndex: 2
-  },
 
   // Past games list
   pastHeader: {

@@ -2,9 +2,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-const APP_VERSION = '1.5.4'
+const APP_VERSION = '1.5.5'
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
   },
@@ -31,6 +31,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      devOptions: {
+        enabled: command !== 'serve',
+      },
       workbox: {
         skipWaiting: true,
         clientsClaim: true,
@@ -53,4 +56,4 @@ export default defineConfig({
       }
     })
   ]
-})
+}))

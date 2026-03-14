@@ -59,10 +59,11 @@ function UserProfileModal({ session, onClose, onRostersRefresh, onSignOut }) {
           <button onClick={onClose} style={s.closeBtn}>✕</button>
         </div>
 
-        {/* Profile */}
+        {/* Profile — icon + email + version on one compact block */}
         <div style={s.profileSection}>
           <div style={s.frisbeeIcon}>🥏</div>
           <div style={s.profileEmail}>{session.user.email}</div>
+          <div style={s.version}>v{__APP_VERSION__}</div>
         </div>
 
         <div style={s.divider} />
@@ -90,32 +91,21 @@ function UserProfileModal({ session, onClose, onRostersRefresh, onSignOut }) {
 
         <div style={s.divider} />
 
-        {/* Refresh Data */}
+        {/* Refresh + Reload — single row */}
         <div style={s.section}>
-          <div style={s.sectionLabel}>Refresh Data</div>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing || orgMemberships.length === 0}
-            style={s.ghostBtn}
-          >
-            {refreshing ? 'Refreshing...' : 'Refresh Rosters'}
-          </button>
-          {orgMemberships.length === 0 && !loadingOrgs && (
-            <p style={{ ...s.muted, marginTop: 6, fontSize: 11 }}>Select an organization first.</p>
-          )}
-        </div>
-
-        <div style={s.divider} />
-
-        {/* App Update */}
-        <div style={s.section}>
-          <div style={s.sectionLabel}>App Update</div>
-          <button onClick={() => window.location.reload()} style={s.ghostBtn}>
-            Reload App
-          </button>
-          <p style={{ ...s.muted, marginTop: 6, fontSize: 11 }}>
-            Forces any pending PWA update to activate.
-          </p>
+          <div style={s.sectionLabel}>App</div>
+          <div style={s.btnRow}>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing || orgMemberships.length === 0}
+              style={s.halfBtn}
+            >
+              {refreshing ? 'Refreshing…' : 'Refresh Rosters'}
+            </button>
+            <button onClick={() => window.location.reload()} style={s.halfBtn}>
+              Reload App
+            </button>
+          </div>
         </div>
 
         <div style={s.divider} />
@@ -146,9 +136,6 @@ function UserProfileModal({ session, onClose, onRostersRefresh, onSignOut }) {
         {/* Sign Out */}
         <button onClick={onSignOut} style={s.signOutBtn}>Sign Out</button>
 
-        {/* Version */}
-        <div style={s.version}>v{__APP_VERSION__}</div>
-
       </div>
     </div>
   )
@@ -157,15 +144,16 @@ function UserProfileModal({ session, onClose, onRostersRefresh, onSignOut }) {
 const styles = {
   overlay: {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 500,
-    display: 'flex', alignItems: 'flex-end', justifyContent: 'center'
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '16px',
   },
   modal: {
-    background: '#181c26', border: '1px solid #2a2f42', borderRadius: '16px 16px 0 0',
-    width: '100%', maxWidth: '600px', padding: '24px 20px 36px',
-    maxHeight: '90vh', overflowY: 'auto'
+    background: '#181c26', border: '1px solid #2a2f42', borderRadius: '16px',
+    width: '100%', maxWidth: '480px', padding: '20px 20px 28px',
+    maxHeight: '90vh', overflowY: 'auto',
   },
   modalHeader: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'
   },
   title: {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: '20px',
@@ -176,33 +164,37 @@ const styles = {
     fontSize: '16px', padding: '6px 10px', borderRadius: '7px', cursor: 'pointer'
   },
   profileSection: {
-    display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '4px'
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, paddingBottom: '4px'
   },
   frisbeeIcon: {
-    fontSize: '48px', lineHeight: 1, marginBottom: '10px'
+    fontSize: '36px', lineHeight: 1, marginBottom: '4px'
   },
   profileEmail: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '15px',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '14px',
     color: '#e8eaf0', letterSpacing: '0.5px', wordBreak: 'break-all', textAlign: 'center'
   },
-  divider: { height: 1, background: '#2a2f42', margin: '20px 0' },
+  version: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '11px',
+    color: '#3a3f52', letterSpacing: '1px'
+  },
+  divider: { height: 1, background: '#2a2f42', margin: '14px 0' },
   section: { marginBottom: '4px' },
   sectionLabel: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '11px', fontWeight: '700',
-    letterSpacing: '1px', textTransform: 'uppercase', color: '#7a8099', marginBottom: '12px'
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '10px', fontWeight: '700',
+    letterSpacing: '1px', textTransform: 'uppercase', color: '#7a8099', marginBottom: '8px'
   },
   orgRow: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    padding: '8px 0', borderBottom: '1px solid #2a2f42'
+    padding: '6px 0', borderBottom: '1px solid #2a2f42'
   },
   orgName: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '14px',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '13px',
     fontWeight: '700', color: '#e8eaf0', textTransform: 'uppercase', letterSpacing: '0.5px'
   },
   roleBadge: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '11px', fontWeight: '700',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '10px', fontWeight: '700',
     letterSpacing: '0.5px', textTransform: 'uppercase', borderRadius: '20px',
-    padding: '2px 10px', border: '1px solid'
+    padding: '2px 8px', border: '1px solid'
   },
   roleAdmin: {
     background: 'rgba(0,229,160,0.12)', borderColor: 'rgba(0,229,160,0.25)', color: '#00e5a0'
@@ -210,31 +202,35 @@ const styles = {
   roleMember: {
     background: 'rgba(122,128,153,0.12)', borderColor: 'rgba(122,128,153,0.25)', color: '#7a8099'
   },
+  btnRow: {
+    display: 'flex', gap: 8
+  },
+  halfBtn: {
+    flex: 1, background: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.2)',
+    color: '#00e5a0', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '13px',
+    fontWeight: '800', padding: '9px 4px', borderRadius: '8px',
+    textTransform: 'uppercase', letterSpacing: '0.5px', cursor: 'pointer'
+  },
   ghostBtn: {
     width: '100%', background: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.2)',
-    color: '#00e5a0', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '14px',
-    fontWeight: '800', padding: '11px', borderRadius: '8px',
+    color: '#00e5a0', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '13px',
+    fontWeight: '800', padding: '9px', borderRadius: '8px',
     textTransform: 'uppercase', letterSpacing: '0.5px', cursor: 'pointer'
   },
   signOutBtn: {
     width: '100%', background: '#1f2435', border: '1px solid #2a2f42', color: '#7a8099',
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '14px', fontWeight: '700',
-    padding: '11px', borderRadius: '8px', textTransform: 'uppercase',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '13px', fontWeight: '700',
+    padding: '9px', borderRadius: '8px', textTransform: 'uppercase',
     letterSpacing: '0.5px', cursor: 'pointer'
   },
   successMsg: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '14px',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '13px',
     color: '#00e5a0', fontWeight: '700', margin: 0
   },
-  muted: { color: '#7a8099', fontSize: '13px', margin: 0 },
-  version: {
-    textAlign: 'center', marginTop: 16,
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '11px',
-    color: '#3a3f52', letterSpacing: '1px'
-  },
+  muted: { color: '#7a8099', fontSize: '12px', margin: 0 },
   error: {
     background: 'rgba(255,77,109,0.1)', border: '1px solid rgba(255,77,109,0.3)',
-    color: '#ff4d6d', padding: '0.75rem', borderRadius: '8px', fontSize: '0.9rem'
+    color: '#ff4d6d', padding: '0.65rem', borderRadius: '8px', fontSize: '0.85rem'
   }
 }
 
