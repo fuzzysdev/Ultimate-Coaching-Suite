@@ -87,7 +87,19 @@ export default function GameSheetPage({ org, roster }) {
   const scoreBarRef = useRef(null)
   const syncingRef  = useRef(false)
 
-  useEffect(() => { fetchPlayers() }, [roster?.id])
+  // Persist working state to localStorage so tab-switching doesn't lose progress
+  useEffect(() => {
+    if (!game?.id) return
+    const linesSerial = {}
+    Object.entries(lines).forEach(([k, s]) => { linesSerial[k] = [...s] })
+    localStorage.setItem(`ucs_game_${game.id}`, JSON.stringify({ lines: linesSerial, playerStatus }))
+  }, [game?.id, lines, playerStatus])
+
+  useEffect(() => {
+    if (!roster?.id) return
+    fetchPlayers()
+    loadActiveGame()
+  }, [roster?.id])
 
   const fetchPlayers = async () => {
     if (!roster?.id) return
@@ -97,6 +109,62 @@ export default function GameSheetPage({ org, roster }) {
       .eq('roster_id', roster.id).order('name')
     setPlayers(data || [])
     setLoadingPlayers(false)
+  }
+
+  const loadActiveGame = async () => {
+    if (!roster?.id) return
+    const { data: activeGame } = await supabase
+      .from('games').select('*')
+      .eq('roster_id', roster.id).eq('status', 'active')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (!activeGame) return
+
+    const { data: gamePoints } = await supabase
+      .from('game_points').select('*')
+      .eq('game_id', activeGame.id).order('point_number')
+
+    const restoredSetup = {
+      opponent:       activeGame.opponent,
+      firstGender:    activeGame.first_gender,
+      startingAction: activeGame.starting_action,
+      direction:      activeGame.direction,
+      lineSize:       activeGame.line_size,
+    }
+
+    const restoredPoints = (gamePoints || []).map(gp => ({
+      gender:          gp.gender,
+      scoredBy:        gp.scored_by,
+      ourScoreAfter:   gp.our_score_after,
+      theirScoreAfter: gp.their_score_after,
+    }))
+
+    // Restore lines for past points from DB
+    const restoredLines = {}
+    ;(gamePoints || []).forEach(gp => {
+      restoredLines[gp.point_number] = new Set(gp.player_ids || [])
+    })
+
+    // Restore current-point line and playerStatus from localStorage (more recent)
+    const cached = localStorage.getItem(`ucs_game_${activeGame.id}`)
+    if (cached) {
+      try {
+        const { lines: linesArr, playerStatus: ps } = JSON.parse(cached)
+        const curPtIdx = restoredPoints.length
+        // Only restore current/future lines from cache (past lines come from DB)
+        Object.entries(linesArr || {}).forEach(([k, arr]) => {
+          if (Number(k) >= curPtIdx) restoredLines[k] = new Set(arr)
+        })
+        setPlayerStatus(ps || {})
+      } catch {}
+    }
+
+    setGame(activeGame)
+    setSetup(restoredSetup)
+    setPoints(restoredPoints)
+    setLines(restoredLines)
+    setOurTO(activeGame.our_timeouts_used || 0)
+    setTheirTO(activeGame.their_timeouts_used || 0)
+    scrollToCurrent()
   }
 
   // ── Derived ──────────────────────────────────────────────────────────────
@@ -192,6 +260,8 @@ export default function GameSheetPage({ org, roster }) {
     })
   }
 
+  const toggleCurLine = (playerId) => toggleCell(playerId, curIdx)
+
   const cycleStatus = (playerId) => {
     const cur = playerStatus[playerId]
     const next = !cur ? 'away' : cur === 'away' ? 'injured' : null
@@ -268,7 +338,7 @@ export default function GameSheetPage({ org, roster }) {
       organization_id: org.id, roster_id: roster.id,
       opponent: setupData.opponent, first_gender: setupData.firstGender,
       starting_action: setupData.startingAction, direction: setupData.direction,
-      line_size: setupData.lineSize,
+      line_size: setupData.lineSize, status: 'active',
     }).select().single()
     if (error) { console.error(error); return }
     setGame(data); setSetup(setupData); setPoints([]); setLines({})
@@ -281,6 +351,7 @@ export default function GameSheetPage({ org, roster }) {
     try {
       await supabase.from('spirit_ratings').insert({ game_id: game.id, ...ratings })
       await supabase.from('games').update({ status: 'completed', ended_at: new Date().toISOString() }).eq('id', game.id)
+      if (game?.id) localStorage.removeItem(`ucs_game_${game.id}`)
       setShowEndDialog(false); setGame(null); setSetup(null); setPoints([]); setLines({}); setPlayerStatus({})
     } finally { setSavingEnd(false) }
   }
@@ -382,6 +453,25 @@ export default function GameSheetPage({ org, roster }) {
         </button>
       </div>
 
+      {/* ── Line Builder ── */}
+      <LineBuilder
+        players={players}
+        males={males}
+        females={females}
+        isSingle={isSingle}
+        curLine={curLine}
+        onToggle={toggleCurLine}
+        playerStatus={playerStatus}
+        lineSize={lineSize}
+        curFNeed={curFNeed}
+        curMNeed={curMNeed}
+        selF={selF}
+        selM={selM}
+        lineOK={lineOK}
+        gt={gt}
+        lightGrid={lightGrid}
+      />
+
       {/* ── Grid ── */}
       {loadingPlayers ? (
         <div style={S.loading}>Loading...</div>
@@ -437,7 +527,7 @@ export default function GameSheetPage({ org, roster }) {
             <>
               {players.map(p => (
                 <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
-                  stickyName={stickyName} colCell={colCell} onToggle={toggleCell} rowH={ROW_H}
+                  stickyName={stickyName} colCell={colCell} rowH={ROW_H}
                   status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
                   gt={gt} lightGrid={lightGrid} />
               ))}
@@ -450,7 +540,7 @@ export default function GameSheetPage({ org, roster }) {
                 colBgFn={(i, cur) => colBg(i, cur, lightGrid)} curIdx={curIdx} secH={SEC_H} gt={gt} />
               {females.map(p => (
                 <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
-                  stickyName={stickyName} colCell={colCell} onToggle={toggleCell} rowH={ROW_H}
+                  stickyName={stickyName} colCell={colCell} rowH={ROW_H}
                   status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
                   gt={gt} lightGrid={lightGrid} />
               ))}
@@ -461,7 +551,7 @@ export default function GameSheetPage({ org, roster }) {
                 colBgFn={(i, cur) => colBg(i, cur, lightGrid)} curIdx={curIdx} secH={SEC_H} gt={gt} />
               {males.map(p => (
                 <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
-                  stickyName={stickyName} colCell={colCell} onToggle={toggleCell} rowH={ROW_H}
+                  stickyName={stickyName} colCell={colCell} rowH={ROW_H}
                   status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
                   gt={gt} lightGrid={lightGrid} />
               ))}
@@ -563,11 +653,10 @@ function SectionRow({ label, color, stickyName, colIndices, colBgFn, curIdx, sec
   )
 }
 
-function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, onToggle, rowH, status, onStatusChange, gt, lightGrid }) {
+function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, rowH, status, onStatusChange, gt, lightGrid }) {
   const unavailable = !!status
   const borderColor = status === 'injured' ? '#f0a500' : status === 'away' ? '#4a5068' : 'transparent'
   const rowOpacity  = status === 'away' ? 0.28 : status === 'injured' ? 0.45 : 1
-  const pdRef = useRef(null)
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', opacity: rowOpacity }}>
@@ -605,22 +694,10 @@ function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, onT
 
       {colIndices.map(i => {
         const selected = lines[i]?.has(player.id) || false
-        const isPast   = i < curIdx
-        const interactive = !unavailable && !isPast
         return (
           <div key={i}
-            onPointerDown={interactive ? (e) => { pdRef.current = { x: e.clientX, y: e.clientY } } : undefined}
-            onPointerUp={interactive ? (e) => {
-              if (!pdRef.current) return
-              const dx = e.clientX - pdRef.current.x
-              const dy = e.clientY - pdRef.current.y
-              if (Math.sqrt(dx*dx + dy*dy) < 8) onToggle(player.id, i)
-              pdRef.current = null
-            } : undefined}
             style={{ ...colCell(i), height: rowH, borderBottom: `1px solid ${gt.rowBorder}`,
-              cursor: interactive ? 'pointer' : 'default',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              touchAction: interactive ? 'none' : 'auto' }}>
+              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {selected && (
               <div style={{
                 width: 16, height: 16, borderRadius: 3,
@@ -631,6 +708,78 @@ function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, onT
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function LineBuilder({ players, males, females, isSingle, curLine, onToggle, playerStatus, lineSize, curFNeed, curMNeed, selF, selM, lineOK, gt, lightGrid }) {
+  const over = !isSingle && (selF > curFNeed || selM > curMNeed)
+
+  const ChipRow = ({ list, genderColor }) => list.map(p => {
+    const sel  = curLine.has(p.id)
+    const off  = !!playerStatus[p.id]
+    const firstName = p.name.split(' ')[0]
+    return (
+      <button
+        key={p.id}
+        onClick={() => !off && onToggle(p.id)}
+        disabled={off}
+        style={{
+          height: 30, padding: '0 9px', borderRadius: 5, border: 'none',
+          fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 800,
+          textTransform: 'uppercase', letterSpacing: 0.3, cursor: off ? 'default' : 'pointer',
+          flexShrink: 0, whiteSpace: 'nowrap',
+          opacity: off ? 0.25 : 1,
+          background: sel
+            ? (genderColor || (lightGrid ? '#00c896' : '#00e5a0'))
+            : (lightGrid ? '#e0e3ef' : '#1f2435'),
+          color: sel
+            ? (genderColor ? '#fff' : '#0f1117')
+            : (lightGrid ? '#5060a0' : '#7a8099'),
+          transition: 'background 0.1s, color 0.1s',
+        }}
+      >
+        {firstName}
+      </button>
+    )
+  })
+
+  const countColor = over ? '#ff4d6d' : lineOK ? '#00e5a0' : (lightGrid ? '#7a8099' : '#4a5068')
+  const countText  = isSingle
+    ? `${curLine.size}/${lineSize}`
+    : `${selF}/${curFNeed}F · ${selM}/${curMNeed}M`
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8,
+      background: lightGrid ? '#eaecf2' : '#181c26',
+      borderBottom: `1px solid ${lightGrid ? '#b8bdd0' : '#2a2f42'}`,
+      padding: '6px 10px', flexShrink: 0, minHeight: 46,
+    }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, minWidth: 36 }}>
+        <span style={{
+          fontFamily: "'Barlow Condensed', sans-serif", fontSize: 8, fontWeight: 800,
+          color: lightGrid ? '#8090b0' : '#4a5068', textTransform: 'uppercase', letterSpacing: 1,
+        }}>LINE</span>
+        <span style={{
+          fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, fontWeight: 800, color: countColor,
+        }}>{countText}</span>
+        {lineOK && <span style={{ fontSize: 10, color: '#00e5a0' }}>✓</span>}
+      </div>
+      <div style={{ width: 1, alignSelf: 'stretch', background: lightGrid ? '#b8bdd0' : '#2a2f42', flexShrink: 0 }} />
+      <div style={{ display: 'flex', gap: 5, overflowX: 'auto', alignItems: 'center', flex: 1, scrollbarWidth: 'none' }}>
+        {isSingle ? (
+          <ChipRow list={players} />
+        ) : (
+          <>
+            <ChipRow list={females} genderColor="#cc5faa" />
+            {females.length > 0 && males.length > 0 && (
+              <div style={{ width: 1, height: 22, background: lightGrid ? '#b8bdd0' : '#2a2f42', flexShrink: 0 }} />
+            )}
+            <ChipRow list={males} genderColor="#3d7fd4" />
+          </>
+        )}
+      </div>
     </div>
   )
 }
