@@ -201,7 +201,7 @@ const orgName = orgData?.name || 'Unknown Organization'
 
 const styles = {
   overlay: {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 500,
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 600,
     display: 'flex', alignItems: 'flex-end', justifyContent: 'center'
   },
   modal: {

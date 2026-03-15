@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
-import InviteModal from '../Components/InviteModal'
-import CreateOrgModal from '../Components/CreateOrgModal'
 import UserProfileModal from '../Components/UserProfileModal'
 import RostersPage from './RostersPage'
 import TryoutsPage from './TryoutsPage'
 import GameSheetPage from './GameSheetPage'
 import AttendancePage from './Attendance'
 import PlaceholderPage from './PlaceholderPage'
+
+const DEMO_ORG_NAME = 'UCS DEMO'
 
 const NAV_ITEMS = [
   { key: 'rosters',     label: 'Rosters' },
@@ -20,20 +20,32 @@ const NAV_ITEMS = [
 ]
 
 function MainShell({ session }) {
-  const [organizations, setOrganizations] = useState([])
-  const [selectedOrg, setSelectedOrg] = useState(null)
-  const [rosters, setRosters] = useState([])
+  const [organizations,  setOrganizations]  = useState([])
+  const [selectedOrg,    setSelectedOrg]    = useState(null)
+  const [rosters,        setRosters]        = useState([])
   const [selectedRoster, setSelectedRoster] = useState(null)
-  const [currentApp, setCurrentApp] = useState('rosters')
-  const [showInviteModal, setShowInviteModal] = useState(false)
-  const [showCreateOrgModal, setShowCreateOrgModal] = useState(false)
+  const [currentApp,     setCurrentApp]     = useState('rosters')
   const [showProfileModal, setShowProfileModal] = useState(false)
-  const [joinedOrgName, setJoinedOrgName] = useState(null)
-  const [loadingOrgs, setLoadingOrgs] = useState(true)
+  const [toast,          setToast]          = useState(null)
+  const [loadingOrgs,    setLoadingOrgs]    = useState(true)
   const isOnline = useOnlineStatus()
 
   useEffect(() => { fetchOrganizations() }, [])
   useEffect(() => { if (selectedOrg) fetchRosters(selectedOrg.id) }, [selectedOrg])
+
+  const showToast = (msg) => {
+    setToast(msg)
+    setTimeout(() => setToast(null), 3000)
+  }
+
+  const autoJoinDemoOrg = async () => {
+    const { data: org } = await supabase
+      .from('organizations').select('id').eq('name', DEMO_ORG_NAME).maybeSingle()
+    if (!org) return
+    // Silently insert — RLS will reject duplicates, just ignore errors
+    await supabase.from('user_organizations')
+      .insert({ user_id: session.user.id, organization_id: org.id, role: 'member' })
+  }
 
   const fetchOrganizations = async () => {
     try {
@@ -44,9 +56,18 @@ function MainShell({ session }) {
         .eq('user_id', session.user.id)
       if (error) throw error
 
-      const orgs = data.map(row => row.organizations).filter(Boolean)
-      setOrganizations(orgs)
+      let orgs = data.map(row => row.organizations).filter(Boolean)
 
+      if (orgs.length === 0) {
+        await autoJoinDemoOrg()
+        const { data: retry } = await supabase
+          .from('user_organizations')
+          .select('organization_id, organizations(id, name)')
+          .eq('user_id', session.user.id)
+        orgs = (retry || []).map(row => row.organizations).filter(Boolean)
+      }
+
+      setOrganizations(orgs)
       if (orgs.length > 0) {
         const savedOrgId = localStorage.getItem(`selectedOrg_${session.user.id}`)
         const savedOrg = savedOrgId && orgs.find(o => o.id === savedOrgId)
@@ -67,8 +88,6 @@ function MainShell({ session }) {
       .order('name')
     const rosterList = data || []
     setRosters(rosterList)
-
-    // Restore saved roster selection
     const savedRosterId = localStorage.getItem(`selectedRoster_${session.user.id}`)
     const savedRoster = savedRosterId && rosterList.find(r => r.id === savedRosterId)
     setSelectedRoster(savedRoster || rosterList[0] || null)
@@ -93,32 +112,24 @@ function MainShell({ session }) {
     supabase.auth.signOut()
   }
 
+  // Called by UserProfileModal after any org membership change
+  const handleOrgChanged = (toastMsg) => {
+    fetchOrganizations()
+    if (toastMsg) showToast(toastMsg)
+  }
+
   const renderApp = () => {
     if (!selectedOrg) {
       return (
         <div style={styles.noOrg}>
-          <p>You are not part of any organization yet.</p>
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
-            <button onClick={() => setShowCreateOrgModal(true)} style={styles.joinBtn}>
-              + Create Organization
-            </button>
-            <button onClick={() => setShowInviteModal(true)} style={styles.joinBtnSecondary}>
-              Join with Invite Code
-            </button>
-          </div>
+          <div style={{ fontSize: 40 }}>🥏</div>
+          <p>Tap your profile to join or create an organization.</p>
         </div>
       )
     }
-
     switch (currentApp) {
       case 'rosters':
-        return (
-          <RostersPage
-            org={selectedOrg}
-            session={session}
-            onRostersChanged={() => fetchRosters(selectedOrg.id)}
-          />
-        )
+        return <RostersPage org={selectedOrg} session={session} onRostersChanged={() => fetchRosters(selectedOrg.id)} />
       case 'tryouts':
         return <TryoutsPage org={selectedOrg} session={session} />
       case 'gamesheet':
@@ -133,52 +144,24 @@ function MainShell({ session }) {
   const s = styles
   return (
     <div style={s.container}>
-      {/* Modals */}
-      {showInviteModal && (
-        <InviteModal
-          org={selectedOrg}
-          userId={session.user.id}
-          onClose={() => setShowInviteModal(false)}
-          onJoined={(orgName) => {
-            setShowInviteModal(false)
-            setJoinedOrgName(orgName)
-            fetchOrganizations()
-            setTimeout(() => setJoinedOrgName(null), 3000)
-          }}
-        />
-      )}
-      {showCreateOrgModal && (
-        <CreateOrgModal
-          userId={session.user.id}
-          onClose={() => setShowCreateOrgModal(false)}
-          onCreated={(org) => {
-            setShowCreateOrgModal(false)
-            setJoinedOrgName(org.name)
-            fetchOrganizations()
-            setTimeout(() => setJoinedOrgName(null), 3000)
-          }}
-        />
-      )}
       {showProfileModal && (
         <UserProfileModal
           session={session}
+          selectedOrg={selectedOrg}
           onClose={() => setShowProfileModal(false)}
           onRostersRefresh={() => fetchRosters(selectedOrg?.id)}
           onSignOut={handleLogout}
+          onOrgChanged={handleOrgChanged}
         />
       )}
 
-      {/* Offline banner */}
       {!isOnline && (
         <div style={s.offlineBanner}>
           Offline — changes will sync when connection is restored
         </div>
       )}
 
-      {/* Toast */}
-      {joinedOrgName && (
-        <div style={s.toast}>✓ Joined {joinedOrgName}!</div>
-      )}
+      {toast && <div style={s.toast}>✓ {toast}</div>}
 
       {/* Top Bar */}
       <header style={s.header}>
@@ -188,61 +171,30 @@ function MainShell({ session }) {
 
         {/* Centre — org + roster selectors */}
         <div style={s.selectors}>
-          {/* Org selector */}
           {organizations.length > 0 && (
             <div style={s.selectorGroup}>
               <label style={s.selectorLabel}>Org</label>
-              <select
-                value={selectedOrg?.id || ''}
-                onChange={handleOrgChange}
-                style={s.select}
-              >
+              <select value={selectedOrg?.id || ''} onChange={handleOrgChange} style={s.select}>
                 {organizations.map(org => (
                   <option key={org.id} value={org.id}>{org.name}</option>
                 ))}
               </select>
             </div>
           )}
-
-          {/* Roster selector */}
           {rosters.length > 0 && (
             <div style={s.selectorGroup}>
               <label style={s.selectorLabel}>Roster</label>
-              <select
-                value={selectedRoster?.id || ''}
-                onChange={handleRosterChange}
-                style={s.select}
-              >
+              <select value={selectedRoster?.id || ''} onChange={handleRosterChange} style={s.select}>
                 {rosters.map(r => (
                   <option key={r.id} value={r.id}>{r.name}</option>
                 ))}
               </select>
             </div>
           )}
-
-          <button
-            onClick={() => setShowCreateOrgModal(true)}
-            style={s.newOrgBtn}
-            title="Create a new organization"
-          >
-            + New Org
-          </button>
-          <button
-            onClick={() => setShowInviteModal(true)}
-            style={s.inviteBtn}
-            title="Invite or join an organization"
-          >
-            + Invite / Join
-          </button>
         </div>
 
-        {/* Right — profile button */}
         <div style={s.headerRight}>
-          <button
-            onClick={() => setShowProfileModal(true)}
-            style={s.profileBtn}
-            title={session.user.email}
-          >
+          <button onClick={() => setShowProfileModal(true)} style={s.profileBtn} title={session.user.email}>
             🥏
           </button>
         </div>
@@ -251,11 +203,8 @@ function MainShell({ session }) {
       {/* Nav Bar */}
       <nav style={s.nav}>
         {NAV_ITEMS.map(item => (
-          <button
-            key={item.key}
-            onClick={() => setCurrentApp(item.key)}
-            style={{ ...s.navBtn, ...(currentApp === item.key ? s.navBtnActive : {}) }}
-          >
+          <button key={item.key} onClick={() => setCurrentApp(item.key)}
+            style={{ ...s.navBtn, ...(currentApp === item.key ? s.navBtnActive : {}) }}>
             {item.label}
           </button>
         ))}
@@ -263,11 +212,7 @@ function MainShell({ session }) {
 
       {/* App Content */}
       <div key={currentApp} style={s.content}>
-        {loadingOrgs ? (
-          <div style={s.loading}>Loading...</div>
-        ) : (
-          renderApp()
-        )}
+        {loadingOrgs ? <div style={s.loading}>Loading...</div> : renderApp()}
       </div>
     </div>
   )
@@ -298,10 +243,7 @@ const styles = {
     fontWeight: '800', color: '#00e5a0', textTransform: 'uppercase',
     letterSpacing: '1px', whiteSpace: 'nowrap', margin: 0
   },
-  logoSub: {
-    color: '#7a8099', fontWeight: '400', fontSize: '13px',
-    letterSpacing: '0.5px', marginLeft: '8px'
-  },
+  logoSub: { color: '#7a8099', fontWeight: '400', fontSize: '13px', letterSpacing: '0.5px', marginLeft: '8px' },
   selectors: { display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', flex: 1, justifyContent: 'center' },
   selectorGroup: { display: 'flex', alignItems: 'center', gap: '6px' },
   selectorLabel: {
@@ -311,20 +253,7 @@ const styles = {
   select: {
     background: '#1f2435', border: '1px solid #2a2f42', color: '#e8eaf0',
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: '14px', fontWeight: '600',
-    padding: '6px 10px', borderRadius: '6px', outline: 'none', cursor: 'pointer',
-    width: 'auto'
-  },
-  newOrgBtn: {
-    background: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.2)',
-    color: '#00e5a0', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '12px',
-    fontWeight: '800', padding: '10px 14px', borderRadius: '6px', cursor: 'pointer',
-    textTransform: 'uppercase', letterSpacing: '0.5px', minHeight: 40
-  },
-  inviteBtn: {
-    background: 'rgba(0,229,160,0.1)', border: '1px solid rgba(0,229,160,0.2)',
-    color: '#00e5a0', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '12px',
-    fontWeight: '800', padding: '10px 14px', borderRadius: '6px', cursor: 'pointer',
-    textTransform: 'uppercase', letterSpacing: '0.5px', minHeight: 40
+    padding: '6px 10px', borderRadius: '6px', outline: 'none', cursor: 'pointer'
   },
   headerRight: { display: 'flex', alignItems: 'center' },
   profileBtn: {
@@ -339,8 +268,7 @@ const styles = {
     background: 'none', border: 'none', color: '#7a8099',
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: '13px', fontWeight: '700',
     padding: '12px 16px', cursor: 'pointer', textTransform: 'uppercase',
-    letterSpacing: '0.5px', borderBottom: '2px solid transparent',
-    transition: 'color 0.15s', whiteSpace: 'nowrap'
+    letterSpacing: '0.5px', borderBottom: '2px solid transparent', whiteSpace: 'nowrap'
   },
   navBtnActive: { color: '#00e5a0', borderBottomColor: '#00e5a0' },
   content: { flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: '#0f1117' },
@@ -351,21 +279,9 @@ const styles = {
   },
   noOrg: {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
-    justifyContent: 'center', flex: 1, gap: '1rem', color: '#7a8099'
+    justifyContent: 'center', flex: 1, gap: '12px',
+    color: '#7a8099', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '14px'
   },
-  joinBtn: {
-    background: '#00e5a0', color: '#0f1117', border: 'none',
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '14px',
-    fontWeight: '800', padding: '10px 24px', borderRadius: '7px',
-    textTransform: 'uppercase', cursor: 'pointer'
-  },
-  joinBtnSecondary: {
-    background: 'transparent', color: '#00e5a0',
-    border: '1px solid rgba(0,229,160,0.4)',
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '14px',
-    fontWeight: '800', padding: '10px 24px', borderRadius: '7px',
-    textTransform: 'uppercase', cursor: 'pointer'
-  }
 }
 
 export default MainShell
