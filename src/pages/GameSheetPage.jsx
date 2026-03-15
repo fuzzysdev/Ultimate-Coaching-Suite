@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import GameSetupDialog from '../Components/GameSetupDialog'
 import GameEndDialog from '../Components/GameEndDialog'
@@ -10,24 +10,22 @@ function getGenderForPoint(i, first) {
   return Math.floor((i - 1) / 2) % 2 === 0 ? other : first
 }
 
-const NAME_W  = 90   // px — sticky name column
-const COL_W   = 44   // px — each point column (wider for pencil/touch)
-const HDR_H   = 24   // px — pt# and gender header rows
-const SEC_H   = 20   // px — section label row height
-const ROW_H   = 38   // px — player row height (touch-friendly)
-const SCORE_H = 24   // px — score rows at bottom of grid
+const NAME_W  = 90
+const COL_W   = 44
+const HDR_H   = 24
+const SEC_H   = 20
+const ROW_H   = 38
+const SCORE_H = 24
 const MAX_TO  = 3
 
 const POS = { h: 'H', c: 'C', b: 'Hy', e: 'E' }
 
-// ─── Column background tint ───────────────────────────────────────────────────
 function colBg(colIdx, current, light = false) {
   if (colIdx === current)  return light ? 'rgba(0,180,120,0.10)' : 'rgba(0,229,160,0.06)'
   if (colIdx < current)    return light ? 'rgba(0,0,0,0.025)' : 'rgba(255,255,255,0.01)'
   return 'transparent'
 }
 
-// ─── Individual cell fill ─────────────────────────────────────────────────────
 function cellFill(selected, colIdx, current, light = false) {
   if (!selected) return 'transparent'
   if (colIdx < current)   return light ? 'rgba(0,160,110,0.45)' : 'rgba(0,229,160,0.35)'
@@ -35,13 +33,11 @@ function cellFill(selected, colIdx, current, light = false) {
   return light ? 'rgba(0,160,110,0.22)' : 'rgba(0,229,160,0.18)'
 }
 
-// ─── Grid theme ───────────────────────────────────────────────────────────────
 function buildTheme(light) {
   return light ? {
     gridBg:      '#f4f5f8',
     nameBg:      '#ffffff',
     headerBg:    '#eaecf2',
-    sectionBg:   'rgba(0,0,0,0.04)',
     rowBorder:   '#b8bdd0',
     nameColor:   '#1a1d28',
     injColor:    '#a06800',
@@ -55,7 +51,6 @@ function buildTheme(light) {
     gridBg:      '#0f1117',
     nameBg:      '#0f1117',
     headerBg:    '#181c26',
-    sectionBg:   'rgba(0,0,0,0.4)',
     rowBorder:   '#252a3a',
     nameColor:   '#c8ccd8',
     injColor:    '#c8a050',
@@ -69,30 +64,36 @@ function buildTheme(light) {
 }
 
 export default function GameSheetPage({ org, roster }) {
-  const [players,        setPlayers]        = useState([])
-  const [loadingPlayers, setLoadingPlayers] = useState(true)
-  const [game,           setGame]           = useState(null)
-  const [setup,          setSetup]          = useState(null)
-  const [showSetup,      setShowSetup]      = useState(false)
-  const [showEndDialog,  setShowEndDialog]  = useState(false)
-  const [savingEnd,      setSavingEnd]      = useState(false)
-  const [points,         setPoints]         = useState([])
-  const [lines,          setLines]          = useState({})
-  const [ourTO,          setOurTO]          = useState(0)
-  const [theirTO,        setTheirTO]        = useState(0)
-  const [playerStatus,   setPlayerStatus]   = useState({})
-  const [lightGrid,      setLightGrid]      = useState(false)
-  const [completedGames, setCompletedGames] = useState([])
+  const [players,            setPlayers]           = useState([])
+  const [loadingPlayers,     setLoadingPlayers]    = useState(true)
+  const [game,               setGame]              = useState(null)
+  const [setup,              setSetup]             = useState(null)
+  const [showSetup,          setShowSetup]         = useState(false)
+  const [showEndDialog,      setShowEndDialog]     = useState(false)
+  const [savingEnd,          setSavingEnd]         = useState(false)
+  const [points,             setPoints]            = useState([])
+  const [lines,              setLines]             = useState({})
+  const [ourTO,              setOurTO]             = useState(0)
+  const [theirTO,            setTheirTO]           = useState(0)
+  const [playerStatus,       setPlayerStatus]      = useState({})
+  const [lightGrid,          setLightGrid]         = useState(false)
+  const [completedGames,     setCompletedGames]    = useState([])
+  const [showGameInfo,       setShowGameInfo]      = useState(false)
+  const [halftimeAfterPoint, setHalftimeAfterPoint] = useState(null)
+  const [gameStartTime,      setGameStartTime]     = useState('')
+  const [gameEndTime,        setGameEndTime]       = useState('')
 
   const gridRef = useRef(null)
 
-  // Persist working state to localStorage so tab-switching doesn't lose progress
+  // Persist working state to localStorage
   useEffect(() => {
     if (!game?.id) return
     const linesSerial = {}
     Object.entries(lines).forEach(([k, s]) => { linesSerial[k] = [...s] })
-    localStorage.setItem(`ucs_game_${game.id}`, JSON.stringify({ lines: linesSerial, playerStatus }))
-  }, [game?.id, lines, playerStatus])
+    localStorage.setItem(`ucs_game_${game.id}`, JSON.stringify({
+      lines: linesSerial, playerStatus, halftimeAfterPoint, gameStartTime, gameEndTime
+    }))
+  }, [game?.id, lines, playerStatus, halftimeAfterPoint, gameStartTime, gameEndTime])
 
   useEffect(() => {
     if (!roster?.id) return
@@ -138,24 +139,26 @@ export default function GameSheetPage({ org, roster }) {
       theirScoreAfter: gp.their_score_after,
     }))
 
-    // Restore lines for past points from DB
     const restoredLines = {}
     ;(gamePoints || []).forEach(gp => {
       restoredLines[gp.point_number] = new Set(gp.player_ids || [])
     })
 
-    // Restore current-point line and playerStatus from localStorage (more recent)
     const cached = localStorage.getItem(`ucs_game_${activeGame.id}`)
     if (cached) {
       try {
-        const { lines: linesArr, playerStatus: ps } = JSON.parse(cached)
+        const { lines: linesArr, playerStatus: ps, halftimeAfterPoint: ht, gameStartTime: gst, gameEndTime: get } = JSON.parse(cached)
         const curPtIdx = restoredPoints.length
-        // Only restore current/future lines from cache (past lines come from DB)
         Object.entries(linesArr || {}).forEach(([k, arr]) => {
           if (Number(k) >= curPtIdx) restoredLines[k] = new Set(arr)
         })
         setPlayerStatus(ps || {})
+        if (ht !== undefined && ht !== null) setHalftimeAfterPoint(ht)
+        if (gst) setGameStartTime(gst)
+        if (get) setGameEndTime(get)
       } catch {}
+    } else {
+      setGameStartTime(new Date(activeGame.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
     }
 
     setGame(activeGame)
@@ -192,6 +195,15 @@ export default function GameSheetPage({ org, roster }) {
     ;(gamePoints || []).forEach(gp => {
       restoredLines[gp.point_number] = new Set(gp.player_ids || [])
     })
+    const cached = localStorage.getItem(`ucs_game_${g.id}`)
+    if (cached) {
+      try {
+        const { halftimeAfterPoint: ht, gameStartTime: gst, gameEndTime: get } = JSON.parse(cached)
+        if (ht !== undefined && ht !== null) setHalftimeAfterPoint(ht)
+        if (gst) setGameStartTime(gst)
+        if (get) setGameEndTime(get)
+      } catch {}
+    }
     setGame(g); setSetup(restoredSetup); setPoints(restoredPoints); setLines(restoredLines)
     setOurTO(g.our_timeouts_used || 0); setTheirTO(g.their_timeouts_used || 0)
     setPlayerStatus({})
@@ -223,9 +235,7 @@ export default function GameSheetPage({ org, roster }) {
   const nextDir = () => {
     if (!setup) return ''
     const swaps = points.length % 2 !== 0
-    const d = swaps
-      ? (setup.direction === 'left' ? 'right' : 'left')
-      : setup.direction
+    const d = swaps ? (setup.direction === 'left' ? 'right' : 'left') : setup.direction
     return d === 'left' ? '←' : '→'
   }
   const pullReceive = () => {
@@ -247,29 +257,25 @@ export default function GameSheetPage({ org, roster }) {
   const toggleCell = (playerId, ptIdx) => {
     if (ptIdx < curIdx) return
     if (playerStatus[playerId]) return
-
     const player = players.find(p => p.id === playerId)
     if (!player) return
-
     const ptLine = lines[ptIdx] || new Set()
-
     if (!ptLine.has(playerId)) {
       if (isSingle) {
         if (ptLine.size >= lineSize) return
       } else {
-        const ptGender  = getGenderForPoint(ptIdx, setup.firstGender)
-        const ptHCeil   = Math.ceil(lineSize / 2)
-        const ptHFloor  = lineSize - ptHCeil
-        const isMale    = player.gender === 'Male'
-        const need      = isMale
+        const ptGender = getGenderForPoint(ptIdx, setup.firstGender)
+        const ptHCeil  = Math.ceil(lineSize / 2)
+        const ptHFloor = lineSize - ptHCeil
+        const isMale   = player.gender === 'Male'
+        const need     = isMale
           ? (ptGender === 'm' ? ptHCeil : ptHFloor)
           : (ptGender === 'm' ? ptHFloor : ptHCeil)
-        const group  = isMale ? males : females
-        const count  = group.filter(p => ptLine.has(p.id)).length
+        const group = isMale ? males : females
+        const count = group.filter(p => ptLine.has(p.id)).length
         if (count >= need) return
       }
     }
-
     setLines(prev => {
       const s = new Set(prev[ptIdx] || [])
       s.has(playerId) ? s.delete(playerId) : s.add(playerId)
@@ -280,7 +286,6 @@ export default function GameSheetPage({ org, roster }) {
   const cycleStatus = (playerId) => {
     const cur = playerStatus[playerId]
     const next = !cur ? 'away' : cur === 'away' ? 'injured' : null
-
     setPlayerStatus(prev => {
       const updated = { ...prev }
       if (next) updated[playerId] = next
@@ -293,15 +298,13 @@ export default function GameSheetPage({ org, roster }) {
     if (!game) return
     const newOur   = scoredBy === 'us'   ? ourScore + 1 : ourScore
     const newTheir = scoredBy === 'them' ? theirScore + 1 : theirScore
-    const pointNum = curIdx
+    const pointNum    = curIdx
     const pointGender = curGender
     const lineSnapshot = [...curLine]
 
-    // Optimistic update — instant UI
     setPoints(prev => [...prev, { gender: pointGender, scoredBy, ourScoreAfter: newOur, theirScoreAfter: newTheir }])
     scrollToCurrent()
 
-    // Background DB writes — don't await, don't block UI
     supabase.from('game_points').insert({
       game_id: game.id, point_number: pointNum, gender: pointGender,
       scored_by: scoredBy, player_ids: lineSnapshot,
@@ -315,25 +318,16 @@ export default function GameSheetPage({ org, roster }) {
 
   const undoPoint = () => {
     if (!game || points.length === 0) return
-    const lastIdx = points.length - 1  // point_number of the point to remove
-
-    // Optimistic update — remove last point from state immediately
+    const lastIdx = points.length - 1
     setPoints(prev => prev.slice(0, -1))
-
-    // Background DB: delete the game_point row
-    supabase.from('game_points')
-      .delete()
-      .eq('game_id', game.id)
-      .eq('point_number', lastIdx)
-      .then(({ error }) => { if (error) console.error('undo game_points delete:', error) })
-
-    // Restore score to previous point (or 0 if no points left)
+    supabase.from('game_points').delete()
+      .eq('game_id', game.id).eq('point_number', lastIdx)
+      .then(({ error }) => { if (error) console.error('undo delete:', error) })
     const prevOur   = lastIdx > 0 ? points[lastIdx - 1].ourScoreAfter   : 0
     const prevTheir = lastIdx > 0 ? points[lastIdx - 1].theirScoreAfter : 0
-    supabase.from('games')
-      .update({ our_score: prevOur, their_score: prevTheir })
+    supabase.from('games').update({ our_score: prevOur, their_score: prevTheir })
       .eq('id', game.id)
-      .then(({ error }) => { if (error) console.error('undo games score update:', error) })
+      .then(({ error }) => { if (error) console.error('undo score update:', error) })
   }
 
   const useTimeout = (team) => {
@@ -357,7 +351,10 @@ export default function GameSheetPage({ org, roster }) {
     }).select().single()
     if (error) { console.error(error); return }
     setGame(data); setSetup(setupData); setPoints([]); setLines({})
-    setOurTO(0); setTheirTO(0); setPlayerStatus({}); setShowSetup(false)
+    setOurTO(0); setTheirTO(0); setPlayerStatus({})
+    setHalftimeAfterPoint(null); setShowSetup(false)
+    setGameStartTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+    setGameEndTime('')
   }
 
   const handleSaveEnd = async (ratings) => {
@@ -367,7 +364,8 @@ export default function GameSheetPage({ org, roster }) {
       await supabase.from('spirit_ratings').insert({ game_id: game.id, ...ratings })
       await supabase.from('games').update({ status: 'completed', ended_at: new Date().toISOString() }).eq('id', game.id)
       if (game?.id) localStorage.removeItem(`ucs_game_${game.id}`)
-      setShowEndDialog(false); setGame(null); setSetup(null); setPoints([]); setLines({}); setPlayerStatus({})
+      setShowEndDialog(false); setGame(null); setSetup(null); setPoints([]); setLines({})
+      setPlayerStatus({}); setHalftimeAfterPoint(null); setGameStartTime(''); setGameEndTime('')
       fetchCompletedGames()
     } finally { setSavingEnd(false) }
   }
@@ -395,10 +393,7 @@ export default function GameSheetPage({ org, roster }) {
                     <span style={S.pastOpponent}>vs {g.opponent}</span>
                     <span style={S.pastDate}>{dateStr}</span>
                   </div>
-                  <div style={{
-                    ...S.pastScore,
-                    color: won ? '#00e5a0' : lost ? '#ff4d6d' : '#e8eaf0'
-                  }}>
+                  <div style={{ ...S.pastScore, color: won ? '#00e5a0' : lost ? '#ff4d6d' : '#e8eaf0' }}>
                     {g.our_score} – {g.their_score}
                   </div>
                 </button>
@@ -418,7 +413,10 @@ export default function GameSheetPage({ org, roster }) {
 
   const colCell = (colIdx, extra = {}) => ({
     width: COL_W, minWidth: COL_W, flexShrink: 0, textAlign: 'center',
-    background: colBg(colIdx, curIdx, lightGrid), ...extra
+    background: colBg(colIdx, curIdx, lightGrid),
+    borderRight: halftimeAfterPoint !== null && colIdx === halftimeAfterPoint
+      ? '3px solid rgba(255,152,0,0.7)' : undefined,
+    ...extra
   })
 
   return (
@@ -427,16 +425,41 @@ export default function GameSheetPage({ org, roster }) {
         <GameEndDialog ourScore={ourScore} theirScore={theirScore} opponent={setup.opponent}
           onSave={handleSaveEnd} onCancel={() => setShowEndDialog(false)} saving={savingEnd} />
       )}
+      {showGameInfo && (
+        <GameInfoModal
+          setup={setup} points={points} halftimeAfterPoint={halftimeAfterPoint}
+          onMarkHalftime={() => { if (points.length > 0) setHalftimeAfterPoint(points.length - 1) }}
+          onClearHalftime={() => setHalftimeAfterPoint(null)}
+          startTime={gameStartTime} endTime={gameEndTime}
+          onChangeStartTime={setGameStartTime} onChangeEndTime={setGameEndTime}
+          onUpdateSetup={(updates) => setSetup(prev => ({ ...prev, ...updates }))}
+          onClose={() => setShowGameInfo(false)}
+        />
+      )}
 
-      {/* ── Compact Header ── */}
+      {/* ── Header: US score | center info | THEM score ── */}
       <div style={S.header}>
-        <div style={S.scoreBlock}>
-          <span style={S.scoreBig}>{ourScore}</span>
-          <span style={S.scoreSep}>-</span>
-          <span style={S.scoreBig}>{theirScore}</span>
+
+        {/* Left — our score */}
+        <div style={S.scoreSide}>
+          <span style={S.scoreSideLabel}>US</span>
+          <span style={{ ...S.scoreBig, color: '#00e5a0' }}>{ourScore}</span>
+          <div style={S.toDots}>
+            {[0,1,2].map(i => (
+              <button key={i} onClick={() => useTimeout('us')}
+                style={{ ...S.toDot, ...(i < ourTO ? S.toUsed : S.toAvail) }}
+                disabled={i < ourTO || readOnly} />
+            ))}
+          </div>
         </div>
+
+        {/* Center — game info */}
         <div style={S.headerCenter}>
-          <div style={S.vsLine}>vs {setup.opponent}</div>
+          <button onClick={() => setShowGameInfo(true)} style={S.vsBtn}>
+            vs {setup.opponent}
+            <span style={{ fontSize: 10, marginLeft: 5, opacity: 0.55 }}>⚙</span>
+          </button>
+          {halftimeAfterPoint !== null && <div style={S.htBadge}>½ HALF</div>}
           <div style={S.infoLine}>
             {readOnly ? (
               <span style={{ ...S.genBadge, background: 'rgba(122,128,153,0.15)', color: '#7a8099' }}>
@@ -464,49 +487,44 @@ export default function GameSheetPage({ org, roster }) {
             )}
           </div>
         </div>
-        <div style={S.toBlock}>
-          <div style={S.toRow}>
-            <span style={S.toLabel}>US</span>
-            {[0,1,2].map(i => (
-              <button key={i} onClick={() => useTimeout('us')}
-                style={{ ...S.toDot, ...(i < ourTO ? S.toUsed : S.toAvail) }}
-                disabled={i < ourTO} />
-            ))}
-          </div>
-          <div style={S.toRow}>
-            <span style={S.toLabel}>OPP</span>
+
+        {/* Right — their score */}
+        <div style={{ ...S.scoreSide, alignItems: 'flex-end' }}>
+          <span style={{ ...S.scoreSideLabel, textAlign: 'right' }}>
+            {setup.opponent.slice(0, 6).toUpperCase()}
+          </span>
+          <span style={{ ...S.scoreBig, color: '#ff4d6d' }}>{theirScore}</span>
+          <div style={S.toDots}>
             {[0,1,2].map(i => (
               <button key={i} onClick={() => useTimeout('them')}
                 style={{ ...S.toDot, ...(i < theirTO ? S.toUsed : S.toAvailOpp) }}
-                disabled={i < theirTO} />
+                disabled={i < theirTO || readOnly} />
             ))}
           </div>
         </div>
+
       </div>
 
+      {/* ── Action Bar ── */}
       {readOnly ? (
-        /* ── Read-only bar ── */
         <div style={S.actionBar}>
           <button onClick={() => { setGame(null); setSetup(null); setPoints([]); setLines({}) }} style={S.btnEnd}>
             ← Games
           </button>
-          <button onClick={() => setLightGrid(l => !l)} style={S.btnLight} title="Toggle grid light/dark mode">
+          <button onClick={() => setLightGrid(l => !l)} style={S.btnLight}>
             {lightGrid ? '🌙' : '☀️'}
           </button>
         </div>
       ) : (
-        <>
-          {/* ── Action Bar ── */}
-          <div style={S.actionBar}>
-            <button onClick={() => recordPoint('us')} style={S.btnUs}>▲ We Scored</button>
-            <button onClick={() => recordPoint('them')} style={S.btnThem}>▲ They Scored</button>
-            <button onClick={undoPoint} style={S.btnUndo} disabled={points.length === 0}>↩ Undo</button>
-            <button onClick={() => setShowEndDialog(true)} style={S.btnEnd}>End</button>
-            <button onClick={() => setLightGrid(l => !l)} style={S.btnLight} title="Toggle grid light/dark mode">
-              {lightGrid ? '🌙' : '☀️'}
-            </button>
-          </div>
-        </>
+        <div style={S.actionBar}>
+          <button onClick={() => recordPoint('us')} style={S.btnUs}>▲ We Scored</button>
+          <button onClick={() => recordPoint('them')} style={S.btnThem}>▲ They Scored</button>
+          <button onClick={undoPoint} style={S.btnUndo} disabled={points.length === 0}>↩ Undo</button>
+          <button onClick={() => setShowEndDialog(true)} style={S.btnEnd}>End</button>
+          <button onClick={() => setLightGrid(l => !l)} style={S.btnLight}>
+            {lightGrid ? '🌙' : '☀️'}
+          </button>
+        </div>
       )}
 
       {/* ── Grid ── */}
@@ -524,14 +542,22 @@ export default function GameSheetPage({ org, roster }) {
               PLAYER / PT
             </div>
             {colIndices.map(i => (
-              <div key={i} style={{ ...colCell(i), height: HDR_H, lineHeight: HDR_H + 'px',
-                fontSize: 10, color: gt.ptNumColor(i === curIdx),
+              <div key={i} style={{ ...colCell(i), height: HDR_H, position: 'relative',
+                lineHeight: HDR_H + 'px', fontSize: 10, color: gt.ptNumColor(i === curIdx),
                 fontWeight: i === curIdx ? 800 : 600,
                 fontFamily: "'Barlow Condensed', sans-serif",
                 borderBottom: i === curIdx
                   ? `2px solid ${lightGrid ? '#00a878' : '#00e5a0'}`
                   : '2px solid transparent' }}>
                 {i + 1}
+                {halftimeAfterPoint !== null && i === halftimeAfterPoint && (
+                  <span style={{ position: 'absolute', bottom: 1, left: '50%',
+                    transform: 'translateX(-50%)',
+                    fontSize: 6, fontWeight: 800, color: 'rgba(255,152,0,0.9)',
+                    fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5, lineHeight: 1 }}>
+                    HT
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -566,34 +592,31 @@ export default function GameSheetPage({ org, roster }) {
                 <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
                   stickyName={stickyName} colCell={colCell} rowH={ROW_H}
                   status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
-                  onToggle={toggleCell} readOnly={readOnly}
-                  gt={gt} lightGrid={lightGrid} />
+                  onToggle={toggleCell} readOnly={readOnly} gt={gt} lightGrid={lightGrid} />
               ))}
               {players.length === 0 && <EmptySection label="No players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} gt={gt} />}
             </>
           ) : (
             <>
-              {/* ── Female section ── */}
               <SectionRow label="FEMALE" color="#ff80c8" stickyName={stickyName} colIndices={colIndices}
-                colBgFn={(i, cur) => colBg(i, cur, lightGrid)} curIdx={curIdx} secH={SEC_H} gt={gt} />
+                colBgFn={(i, cur) => colBg(i, cur, lightGrid)} curIdx={curIdx} secH={SEC_H} gt={gt}
+                htAfterPoint={halftimeAfterPoint} />
               {females.map(p => (
                 <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
                   stickyName={stickyName} colCell={colCell} rowH={ROW_H}
                   status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
-                  onToggle={toggleCell} readOnly={readOnly}
-                  gt={gt} lightGrid={lightGrid} />
+                  onToggle={toggleCell} readOnly={readOnly} gt={gt} lightGrid={lightGrid} />
               ))}
               {females.length === 0 && <EmptySection label="No female players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} gt={gt} />}
 
-              {/* ── Male section ── */}
               <SectionRow label="MALE" color="#4d9fff" stickyName={stickyName} colIndices={colIndices}
-                colBgFn={(i, cur) => colBg(i, cur, lightGrid)} curIdx={curIdx} secH={SEC_H} gt={gt} />
+                colBgFn={(i, cur) => colBg(i, cur, lightGrid)} curIdx={curIdx} secH={SEC_H} gt={gt}
+                htAfterPoint={halftimeAfterPoint} />
               {males.map(p => (
                 <PlayerRow key={p.id} player={p} colIndices={colIndices} lines={lines} curIdx={curIdx}
                   stickyName={stickyName} colCell={colCell} rowH={ROW_H}
                   status={playerStatus[p.id] || null} onStatusChange={() => cycleStatus(p.id)}
-                  onToggle={toggleCell} readOnly={readOnly}
-                  gt={gt} lightGrid={lightGrid} />
+                  onToggle={toggleCell} readOnly={readOnly} gt={gt} lightGrid={lightGrid} />
               ))}
               {males.length === 0 && <EmptySection label="No male players" stickyName={stickyName} colIndices={colIndices} colCell={colCell} rowH={ROW_H} gt={gt} />}
             </>
@@ -602,8 +625,7 @@ export default function GameSheetPage({ org, roster }) {
           {/* ── Score rows ── */}
           <div style={{ ...S.row, borderTop: `1px solid ${lightGrid ? '#c8ccd8' : '#2a2f42'}`, marginTop: 2 }}>
             <div style={{ ...stickyName(lightGrid ? gt.headerBg : '#181c26'), height: SCORE_H,
-              display: 'flex', alignItems: 'center',
-              paddingLeft: 6, fontSize: 10, fontWeight: 800,
+              display: 'flex', alignItems: 'center', paddingLeft: 6, fontSize: 10, fontWeight: 800,
               color: lightGrid ? '#008060' : '#00e5a0',
               fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5 }}>
               US
@@ -625,9 +647,8 @@ export default function GameSheetPage({ org, roster }) {
           </div>
           <div style={S.row}>
             <div style={{ ...stickyName(lightGrid ? gt.headerBg : '#181c26'), height: SCORE_H,
-              display: 'flex', alignItems: 'center',
-              paddingLeft: 6, fontSize: 10, fontWeight: 800, color: '#ff4d6d',
-              fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5 }}>
+              display: 'flex', alignItems: 'center', paddingLeft: 6, fontSize: 10, fontWeight: 800,
+              color: '#ff4d6d', fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5 }}>
               {setup.opponent.slice(0, 4).toUpperCase()}
             </div>
             {colIndices.map(i => {
@@ -647,15 +668,14 @@ export default function GameSheetPage({ org, roster }) {
 
         </div>
       )}
-
     </div>
   )
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function SectionRow({ label, color, stickyName, colIndices, colBgFn, curIdx, secH, gt }) {
-  const sectionTint = `${color}14`  // subtle color wash behind the whole row
+function SectionRow({ label, color, stickyName, colIndices, colBgFn, curIdx, secH, gt, htAfterPoint }) {
+  const sectionTint = `${color}14`
   return (
     <div style={{ display: 'flex', alignItems: 'center', marginTop: 4 }}>
       <div style={{ ...stickyName(sectionTint), height: secH, display: 'flex', alignItems: 'center',
@@ -667,7 +687,8 @@ function SectionRow({ label, color, stickyName, colIndices, colBgFn, curIdx, sec
       {colIndices.map(i => (
         <div key={i} style={{ width: COL_W, minWidth: COL_W, flexShrink: 0, height: secH,
           background: `${colBgFn(i, curIdx) === 'transparent' ? sectionTint : colBgFn(i, curIdx)}`,
-          borderTop: `2px solid ${color}88`, borderBottom: `1px solid ${color}44` }} />
+          borderTop: `2px solid ${color}88`, borderBottom: `1px solid ${color}44`,
+          borderRight: htAfterPoint !== null && i === htAfterPoint ? '3px solid rgba(255,152,0,0.7)' : undefined }} />
       ))}
     </div>
   )
@@ -680,14 +701,12 @@ function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, row
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', opacity: rowOpacity }}>
-      <div
-        onClick={onStatusChange}
+      <div onClick={onStatusChange}
         title={!status ? 'Tap to mark Away' : status === 'away' ? 'Tap to mark Injured' : 'Tap to mark Active'}
         style={{ ...stickyName(gt.nameBg), height: rowH, display: 'flex', alignItems: 'center',
           paddingLeft: 4, gap: 3, borderBottom: `1px solid ${gt.rowBorder}`,
           borderLeft: `3px solid ${borderColor}`,
-          overflow: 'hidden', cursor: 'pointer', boxSizing: 'border-box' }}
-      >
+          overflow: 'hidden', cursor: 'pointer', boxSizing: 'border-box' }}>
         <span style={{ fontSize: 12, fontWeight: 700,
           color: status === 'injured' ? gt.injColor : gt.nameColor,
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -728,7 +747,6 @@ function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, row
           return (
             <button key={i} onClick={() => onToggle(player.id, i)}
               style={{ ...colCell(i), height: rowH,
-                borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                 borderBottom: `1px solid ${gt.rowBorder}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 padding: 0, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
@@ -760,6 +778,140 @@ function EmptySection({ label, stickyName, colIndices, colCell, rowH, gt }) {
   )
 }
 
+// ── Game Info Modal ───────────────────────────────────────────────────────────
+
+function GameInfoModal({ setup, points, halftimeAfterPoint, onMarkHalftime, onClearHalftime,
+  startTime, endTime, onChangeStartTime, onChangeEndTime, onUpdateSetup, onClose }) {
+
+  const [timerSecs,    setTimerSecs]    = useState(0)
+  const [timerRunning, setTimerRunning] = useState(false)
+  const timerRef = useRef(null)
+  const MAX_TIMER = 15 * 60
+
+  useEffect(() => {
+    if (timerRunning) {
+      timerRef.current = setInterval(() => {
+        setTimerSecs(prev => {
+          if (prev >= MAX_TIMER) { clearInterval(timerRef.current); setTimerRunning(false); return MAX_TIMER }
+          return prev + 1
+        })
+      }, 1000)
+    } else {
+      clearInterval(timerRef.current)
+    }
+    return () => clearInterval(timerRef.current)
+  }, [timerRunning])
+
+  const formatTime = (s) =>
+    `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`
+
+  const timerDone = timerSecs >= MAX_TIMER
+  const timerColor = timerDone ? '#ff4d6d' : timerRunning ? '#00e5a0' : '#e8eaf0'
+
+  return (
+    <div style={MS.overlay} onClick={onClose}>
+      <div style={MS.modal} onClick={e => e.stopPropagation()}>
+        <div style={MS.title}>GAME INFO</div>
+
+        {/* Times */}
+        <div style={MS.section}>
+          <div style={MS.fieldRow}>
+            <span style={MS.label}>Start Time</span>
+            <input value={startTime} onChange={e => onChangeStartTime(e.target.value)}
+              style={MS.input} placeholder="e.g. 10:00 AM" maxLength={20} />
+          </div>
+          <div style={MS.fieldRow}>
+            <span style={MS.label}>End Time</span>
+            <input value={endTime} onChange={e => onChangeEndTime(e.target.value)}
+              style={MS.input} placeholder="e.g. 12:00 PM" maxLength={20} />
+          </div>
+        </div>
+
+        {/* Setup toggles */}
+        <div style={MS.section}>
+          <div style={MS.fieldRow}>
+            <span style={MS.label}>Starting Side</span>
+            <div style={MS.toggleGroup}>
+              <button onClick={() => onUpdateSetup({ direction: 'left' })}
+                style={{ ...MS.toggleBtn, ...(setup.direction === 'left' ? MS.toggleActive : {}) }}>
+                ← Left
+              </button>
+              <button onClick={() => onUpdateSetup({ direction: 'right' })}
+                style={{ ...MS.toggleBtn, ...(setup.direction === 'right' ? MS.toggleActive : {}) }}>
+                → Right
+              </button>
+            </div>
+          </div>
+          <div style={MS.fieldRow}>
+            <span style={MS.label}>Starting</span>
+            <div style={MS.toggleGroup}>
+              <button onClick={() => onUpdateSetup({ startingAction: 'pull' })}
+                style={{ ...MS.toggleBtn, ...(setup.startingAction === 'pull' ? MS.toggleActive : {}) }}>
+                Pull
+              </button>
+              <button onClick={() => onUpdateSetup({ startingAction: 'receive' })}
+                style={{ ...MS.toggleBtn, ...(setup.startingAction === 'receive' ? MS.toggleActive : {}) }}>
+                Receive
+              </button>
+            </div>
+          </div>
+          <div style={MS.fieldRow}>
+            <span style={MS.label}>First Gender</span>
+            <div style={MS.toggleGroup}>
+              <button onClick={() => onUpdateSetup({ firstGender: 'm' })}
+                style={{ ...MS.toggleBtn, ...(setup.firstGender === 'm' ? MS.toggleActiveM : {}) }}>
+                Male
+              </button>
+              <button onClick={() => onUpdateSetup({ firstGender: 'f' })}
+                style={{ ...MS.toggleBtn, ...(setup.firstGender === 'f' ? MS.toggleActiveF : {}) }}>
+                Female
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Halftime */}
+        <div style={MS.section}>
+          <div style={MS.sectionTitle}>HALFTIME</div>
+          {halftimeAfterPoint !== null ? (
+            <div style={MS.htStatus}>
+              <span style={MS.htLabel}>Half after Pt {halftimeAfterPoint + 1}</span>
+              <button onClick={onClearHalftime} style={MS.clearBtn}>Clear</button>
+            </div>
+          ) : (
+            <button onClick={onMarkHalftime} disabled={points.length === 0}
+              style={{ ...MS.htBtn, opacity: points.length === 0 ? 0.4 : 1 }}>
+              Mark Halftime Now
+            </button>
+          )}
+        </div>
+
+        {/* Timer */}
+        <div style={MS.section}>
+          <div style={MS.sectionTitle}>BREAK TIMER</div>
+          <div style={{ ...MS.timerDisplay, color: timerColor }}>
+            {formatTime(timerSecs)}
+          </div>
+          {timerDone && <div style={MS.timerAlert}>TIME'S UP</div>}
+          <div style={MS.timerBtns}>
+            <button onClick={() => setTimerRunning(r => !r)} disabled={timerDone}
+              style={{ ...MS.timerBtn, background: timerRunning ? '#ff4d6d' : '#00e5a0', color: '#0f1117',
+                opacity: timerDone ? 0.4 : 1 }}>
+              {timerRunning ? 'Pause' : 'Start'}
+            </button>
+            <button onClick={() => { setTimerSecs(0); setTimerRunning(false) }}
+              style={{ ...MS.timerBtn, background: '#2a2f42', color: '#7a8099' }}>
+              Reset
+            </button>
+          </div>
+        </div>
+
+        <button onClick={onClose} style={MS.closeBtn}>Done</button>
+      </div>
+    </div>
+  )
+}
+
 // ── Styles ────────────────────────────────────────────────────────────────────
 const S = {
   emptyState: {
@@ -779,23 +931,45 @@ const S = {
 
   container: { flex: 1, display: 'flex', flexDirection: 'column', background: '#0f1117', overflow: 'hidden' },
 
-  // Header
+  // Header — 3-column layout
   header: {
-    display: 'flex', alignItems: 'center', gap: 10,
+    display: 'flex', alignItems: 'center', gap: 8,
     background: '#181c26', borderBottom: '1px solid #2a2f42',
-    padding: '8px 12px', flexShrink: 0
+    padding: '6px 10px', flexShrink: 0,
   },
-  scoreBlock: { display: 'flex', alignItems: 'baseline', gap: 4, minWidth: 72 },
+  scoreSide: {
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 56,
+  },
+  scoreSideLabel: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 9, fontWeight: 800,
+    color: '#4a5068', textTransform: 'uppercase', letterSpacing: 1,
+  },
   scoreBig: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 36, fontWeight: 900, color: '#e8eaf0', lineHeight: 1
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 42, fontWeight: 900, lineHeight: 1,
   },
-  scoreSep: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, color: '#2a2f42', fontWeight: 300 },
-  headerCenter: { flex: 1, minWidth: 0 },
-  vsLine: {
+  toDots: { display: 'flex', gap: 4, marginTop: 2 },
+  toDot:      { width: 14, height: 14, borderRadius: '50%', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0 },
+  toAvail:    { background: '#00e5a0' },
+  toAvailOpp: { background: '#ff4d6d' },
+  toUsed:     { background: '#2a2f42', cursor: 'default' },
+
+  // Center info
+  headerCenter: {
+    flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+  },
+  vsBtn: {
+    background: 'transparent', border: 'none', cursor: 'pointer',
+    display: 'flex', alignItems: 'center',
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, fontWeight: 700,
-    color: '#7a8099', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3
+    color: '#7a8099', textTransform: 'uppercase', letterSpacing: 1,
+    padding: '2px 6px', borderRadius: 4, WebkitTapHighlightColor: 'transparent',
   },
-  infoLine: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  htBadge: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 9, fontWeight: 800,
+    color: 'rgba(255,152,0,1)', background: 'rgba(255,152,0,0.15)',
+    padding: '1px 6px', borderRadius: 10, letterSpacing: 0.5, textTransform: 'uppercase',
+  },
+  infoLine: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'center' },
   genBadge: {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, fontWeight: 800,
     padding: '2px 7px', borderRadius: 20, letterSpacing: 0.5, textTransform: 'uppercase'
@@ -809,16 +983,6 @@ const S = {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, fontWeight: 800,
     color: over ? '#ff4d6d' : ok ? '#00e5a0' : '#7a8099'
   }),
-  toBlock: { display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' },
-  toRow:   { display: 'flex', alignItems: 'center', gap: 4 },
-  toLabel: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 9, fontWeight: 700,
-    color: '#4a5068', textTransform: 'uppercase', letterSpacing: 1, minWidth: 24
-  },
-  toDot:      { width: 22, height: 22, borderRadius: '50%', border: 'none', padding: 0, cursor: 'pointer' },
-  toAvail:    { background: '#00e5a0' },
-  toAvailOpp: { background: '#ff4d6d' },
-  toUsed:     { background: '#2a2f42', cursor: 'default' },
 
   // Action bar
   actionBar: {
@@ -847,43 +1011,121 @@ const S = {
   },
   btnLight: {
     background: 'transparent', border: '1px solid #2a2f42', borderRadius: 7,
-    fontSize: 16, padding: '4px 8px', cursor: 'pointer', lineHeight: 1,
-    flexShrink: 0
+    fontSize: 16, padding: '4px 8px', cursor: 'pointer', lineHeight: 1, flexShrink: 0
   },
 
   loading: {
     padding: '2rem', textAlign: 'center', color: '#7a8099',
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13
   },
-
-  // Grid
-  gridWrap: {
-    flex: 1, overflowX: 'auto', overflowY: 'auto', minHeight: 0
-  },
+  gridWrap: { flex: 1, overflowX: 'auto', overflowY: 'auto', minHeight: 0 },
   row: { display: 'flex', alignItems: 'stretch' },
 
-  // Past games list
+  // Past games
   pastHeader: {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, fontWeight: 800,
-    color: '#4a5068', textTransform: 'uppercase', letterSpacing: 1,
-    padding: '0 4px 10px',
+    color: '#4a5068', textTransform: 'uppercase', letterSpacing: 1, padding: '0 4px 10px',
   },
   pastGameRow: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     width: '100%', background: '#181c26', border: '1px solid #2a2f42',
-    borderRadius: 8, padding: '12px 14px', marginBottom: 8,
-    cursor: 'pointer', textAlign: 'left',
+    borderRadius: 8, padding: '12px 14px', marginBottom: 8, cursor: 'pointer', textAlign: 'left',
   },
   pastGameLeft: { display: 'flex', flexDirection: 'column', gap: 3 },
   pastOpponent: {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 15, fontWeight: 800,
     color: '#e8eaf0', textTransform: 'uppercase', letterSpacing: 0.5,
   },
-  pastDate: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11,
-    color: '#4a5068', letterSpacing: 0.5,
+  pastDate: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, color: '#4a5068', letterSpacing: 0.5 },
+  pastScore: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 900, lineHeight: 1 },
+}
+
+// Modal styles
+const MS = {
+  overlay: {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    zIndex: 100, padding: 16,
   },
-  pastScore: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 900, lineHeight: 1,
+  modal: {
+    background: '#181c26', border: '1px solid #2a2f42', borderRadius: 16,
+    padding: '20px 20px 16px', width: '100%', maxWidth: 380,
+    display: 'flex', flexDirection: 'column', gap: 0,
+    maxHeight: '90vh', overflowY: 'auto',
+  },
+  title: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 900,
+    color: '#e8eaf0', textTransform: 'uppercase', letterSpacing: 2,
+    marginBottom: 16, textAlign: 'center',
+  },
+  section: {
+    borderTop: '1px solid #2a2f42', paddingTop: 14, paddingBottom: 14,
+    display: 'flex', flexDirection: 'column', gap: 10,
+  },
+  sectionTitle: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 10, fontWeight: 800,
+    color: '#4a5068', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 2,
+  },
+  fieldRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  label: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 700,
+    color: '#7a8099', textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0,
+  },
+  input: {
+    background: '#0f1117', border: '1px solid #2a2f42', borderRadius: 6,
+    color: '#e8eaf0', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13,
+    fontWeight: 600, padding: '6px 10px', width: 130, outline: 'none',
+  },
+  toggleGroup: { display: 'flex', gap: 4 },
+  toggleBtn: {
+    background: '#0f1117', border: '1px solid #2a2f42', borderRadius: 6,
+    color: '#7a8099', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11,
+    fontWeight: 700, padding: '5px 10px', cursor: 'pointer', textTransform: 'uppercase',
+  },
+  toggleActive:  { background: 'rgba(0,229,160,0.15)', border: '1px solid #00e5a0', color: '#00e5a0' },
+  toggleActiveM: { background: 'rgba(77,159,255,0.15)', border: '1px solid #4d9fff', color: '#4d9fff' },
+  toggleActiveF: { background: 'rgba(255,128,200,0.15)', border: '1px solid #ff80c8', color: '#ff80c8' },
+
+  // Halftime
+  htStatus: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  htLabel: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 700, color: 'rgba(255,152,0,0.9)',
+  },
+  clearBtn: {
+    background: 'transparent', border: '1px solid #2a2f42', borderRadius: 6,
+    color: '#7a8099', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11,
+    fontWeight: 700, padding: '4px 10px', cursor: 'pointer', textTransform: 'uppercase',
+  },
+  htBtn: {
+    background: 'rgba(255,152,0,0.12)', border: '1px solid rgba(255,152,0,0.5)',
+    borderRadius: 8, color: 'rgba(255,152,0,1)',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 800,
+    padding: '10px 0', textTransform: 'uppercase', letterSpacing: 0.5,
+    cursor: 'pointer', width: '100%',
+  },
+
+  // Timer
+  timerDisplay: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 52, fontWeight: 900,
+    letterSpacing: 2, textAlign: 'center', lineHeight: 1, padding: '8px 0',
+  },
+  timerAlert: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 800,
+    color: '#ff4d6d', textTransform: 'uppercase', letterSpacing: 2, textAlign: 'center',
+    marginBottom: 4,
+  },
+  timerBtns: { display: 'flex', gap: 8 },
+  timerBtn: {
+    flex: 1, border: 'none', borderRadius: 8,
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14, fontWeight: 800,
+    padding: '10px 0', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer',
+  },
+
+  // Close
+  closeBtn: {
+    marginTop: 12, background: '#0f1117', border: '1px solid #2a2f42', borderRadius: 10,
+    color: '#7a8099', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14,
+    fontWeight: 800, padding: '12px 0', textTransform: 'uppercase', cursor: 'pointer',
+    width: '100%',
   },
 }

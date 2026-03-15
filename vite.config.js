@@ -2,31 +2,16 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-const APP_VERSION = '1.5.5'
+const APP_VERSION = '1.5.6'
 
 export default defineConfig(({ command }) => ({
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
   },
-  server: {
-    headers: {
-      'X-Content-Type-Options': 'nosniff',
-      'X-Frame-Options': 'DENY',
-      'X-XSS-Protection': '1; mode=block',
-      'Referrer-Policy': 'strict-origin-when-cross-origin',
-      'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-      'Content-Security-Policy': [
-        "default-src 'self'",
-        "script-src 'self'",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' https://fonts.gstatic.com",
-        "connect-src 'self' https://eoepplbrhqdryehuahql.supabase.co wss://eoepplbrhqdryehuahql.supabase.co",
-        "img-src 'self' data:",
-        "frame-ancestors 'none'",
-        "form-action 'self'"
-      ].join('; ')
-    }
-  },
+  // Security headers are enforced in production via vercel.json.
+  // Vite's dev server injects inline scripts for React Fast Refresh,
+  // so no CSP headers are set here.
+
   plugins: [
     react(),
     VitePWA({
