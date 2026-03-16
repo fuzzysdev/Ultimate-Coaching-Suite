@@ -8,7 +8,6 @@ import GameSheetPage from './GameSheetPage'
 import AttendancePage from './Attendance'
 import PlaceholderPage from './PlaceholderPage'
 
-const DEMO_ORG_NAME = 'UCS DEMO'
 
 const NAV_ITEMS = [
   { key: 'rosters',     label: 'Rosters' },
@@ -39,12 +38,9 @@ function MainShell({ session }) {
   }
 
   const autoJoinDemoOrg = async () => {
-    const { data: org } = await supabase
-      .from('organizations').select('id').eq('name', DEMO_ORG_NAME).maybeSingle()
-    if (!org) return
-    // Silently insert — RLS will reject duplicates, just ignore errors
-    await supabase.from('user_organizations')
-      .insert({ user_id: session.user.id, organization_id: org.id, role: 'member' })
+    // Uses a SECURITY DEFINER RPC to bypass RLS — new users can't see any
+    // orgs yet so a direct SELECT on 'organizations' returns nothing.
+    await supabase.rpc('join_demo_org')
   }
 
   const fetchOrganizations = async () => {
