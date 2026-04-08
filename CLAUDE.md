@@ -107,19 +107,9 @@ npm run preview  # Preview production build locally
 - The dev server (`vite.config.js`) also sets security headers locally.
 - Environment: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local` (gitignored). These are safe to use in browser code.
 
-### REQUIRED: Bump manifest version before every git push
+### Manifest version (auto-bumped by hook)
 
-iOS Safari caches the PWA aggressively. The only reliable way to force an update is to change the manifest `version` field in `vite.config.js`. **Always increment this before pushing**, using semver patch/minor as appropriate:
-
-```js
-// vite.config.js
-manifest: {
-  version: '1.4.0',  // ← bump this before git push
-  ...
-}
-```
-
-Failure to bump the version means iOS users will continue running the old version until they manually clear their browser cache.
+iOS Safari caches the PWA aggressively. The manifest `version` field in `vite.config.js` (`APP_VERSION`) is the only reliable cache-bust. A pre-push Claude Code hook (`.claude/bump-version.sh`) **automatically** increments the patch version and amends the last commit before every `git push`. **Do not bump it manually** — the hook handles it.
 
 ## SQL Migrations
 
