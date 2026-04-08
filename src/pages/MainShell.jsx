@@ -114,6 +114,14 @@ function MainShell({ session }) {
     if (toastMsg) showToast(toastMsg)
   }
 
+  const handleSelectOrg = (org) => {
+    setSelectedOrg(org)
+    setSelectedRoster(null)
+    localStorage.setItem(`selectedOrg_${session.user.id}`, org.id)
+    setShowProfileModal(false)
+    showToast(`Switched to ${org.name}`)
+  }
+
   const renderApp = () => {
     if (!selectedOrg) {
       return (
@@ -148,6 +156,7 @@ function MainShell({ session }) {
           onRostersRefresh={() => fetchRosters(selectedOrg?.id)}
           onSignOut={handleLogout}
           onOrgChanged={handleOrgChanged}
+          onSelectOrg={handleSelectOrg}
         />
       )}
 

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import InviteModal from './InviteModal'
 import CreateOrgModal from './CreateOrgModal'
 
-function UserProfileModal({ session, selectedOrg, onClose, onRostersRefresh, onSignOut, onOrgChanged }) {
+function UserProfileModal({ session, selectedOrg, onClose, onRostersRefresh, onSignOut, onOrgChanged, onSelectOrg }) {
   const [activeTab,       setActiveTab]       = useState('profile')
   const [orgMemberships,  setOrgMemberships]  = useState([])
   const [loadingOrgs,     setLoadingOrgs]     = useState(true)
@@ -184,34 +184,40 @@ function UserProfileModal({ session, selectedOrg, onClose, onRostersRefresh, onS
               ) : orgMemberships.length === 0 ? (
                 <p style={s.muted}>No organizations yet.</p>
               ) : (
-                orgMemberships.map((m) => (
-                  <div key={m.orgId} style={s.orgRow}>
-                    <div style={s.orgRowLeft}>
-                      <span style={s.orgName}>{m.orgName}</span>
-                      <span style={{ ...s.roleBadge, ...(m.role === 'admin' ? s.roleAdmin : s.roleMember) }}>
-                        {m.role}
-                      </span>
-                    </div>
-                    {confirmLeaveId === m.orgId ? (
-                      <div style={s.confirmRow}>
-                        <span style={s.confirmText}>Leave?</span>
-                        <button onClick={() => handleLeave(m.orgId, m.orgName, m.role)}
-                          disabled={leaving}
-                          style={s.confirmYes}>
-                          {leaving ? '...' : 'Yes'}
-                        </button>
-                        <button onClick={() => setConfirmLeaveId(null)} style={s.confirmNo}>
-                          No
-                        </button>
-                      </div>
-                    ) : (
-                      <button onClick={() => { setOrgError(null); setConfirmLeaveId(m.orgId) }}
-                        style={s.leaveBtn}>
-                        Leave
+                orgMemberships.map((m) => {
+                  const isActive = selectedOrg?.id === m.orgId
+                  return (
+                    <div key={m.orgId} style={{ ...s.orgRow, ...(isActive ? s.orgRowActive : {}) }}>
+                      <button
+                        onClick={() => !isActive && onSelectOrg({ id: m.orgId, name: m.orgName })}
+                        style={{ ...s.orgRowLeft, background: 'none', border: 'none', cursor: isActive ? 'default' : 'pointer', padding: 0, flex: 1, textAlign: 'left' }}>
+                        {isActive && <span style={s.activeCheck}>✓</span>}
+                        <span style={{ ...s.orgName, color: isActive ? '#00e5a0' : '#e8eaf0' }}>{m.orgName}</span>
+                        <span style={{ ...s.roleBadge, ...(m.role === 'admin' ? s.roleAdmin : s.roleMember) }}>
+                          {m.role}
+                        </span>
                       </button>
-                    )}
-                  </div>
-                ))
+                      {confirmLeaveId === m.orgId ? (
+                        <div style={s.confirmRow}>
+                          <span style={s.confirmText}>Leave?</span>
+                          <button onClick={() => handleLeave(m.orgId, m.orgName, m.role)}
+                            disabled={leaving}
+                            style={s.confirmYes}>
+                            {leaving ? '...' : 'Yes'}
+                          </button>
+                          <button onClick={() => setConfirmLeaveId(null)} style={s.confirmNo}>
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button onClick={() => { setOrgError(null); setConfirmLeaveId(m.orgId) }}
+                          style={s.leaveBtn}>
+                          Leave
+                        </button>
+                      )}
+                    </div>
+                  )
+                })
               )}
             </div>
 
@@ -229,13 +235,6 @@ function UserProfileModal({ session, selectedOrg, onClose, onRostersRefresh, onS
               </div>
             </div>
 
-            <div style={s.divider} />
-
-            <div style={s.section}>
-              <button onClick={handleRefresh} disabled={refreshing || orgMemberships.length === 0} style={s.ghostBtn}>
-                {refreshing ? 'Refreshing…' : 'Refresh Rosters'}
-              </button>
-            </div>
           </>
         )}
 
@@ -294,7 +293,15 @@ const styles = {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     padding: '8px 0', borderBottom: '1px solid #2a2f42',
   },
+  orgRowActive: {
+    background: 'rgba(0,229,160,0.05)', borderRadius: 6,
+    padding: '8px 6px', margin: '0 -6px',
+  },
   orgRowLeft: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 },
+  activeCheck: {
+    color: '#00e5a0', fontWeight: '800', fontSize: '13px', flexShrink: 0,
+    fontFamily: "'Barlow Condensed', sans-serif",
+  },
   orgName: {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: '13px',
     fontWeight: '700', color: '#e8eaf0', textTransform: 'uppercase', letterSpacing: '0.5px',
