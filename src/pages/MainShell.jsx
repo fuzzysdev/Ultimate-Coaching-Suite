@@ -6,6 +6,7 @@ import RostersPage from './RostersPage'
 import TryoutsPage from './TryoutsPage'
 import GameSheetPage from './GameSheetPage'
 import AttendancePage from './Attendance'
+import StatsPage from './StatsPage'
 import PlaceholderPage from './PlaceholderPage'
 
 
@@ -140,6 +141,8 @@ function MainShell({ session }) {
         return <GameSheetPage org={selectedOrg} roster={selectedRoster} />
       case 'attendance':
         return <AttendancePage org={selectedOrg} session={session} roster={selectedRoster} />
+      case 'stats':
+        return <StatsPage org={selectedOrg} roster={selectedRoster} />
       default:
         return <PlaceholderPage appName={NAV_ITEMS.find(n => n.key === currentApp)?.label} />
     }

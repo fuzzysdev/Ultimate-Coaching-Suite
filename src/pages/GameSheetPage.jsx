@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import GameSetupDialog from '../Components/GameSetupDialog'
 import GameEndDialog from '../Components/GameEndDialog'
+import GoalAssistModal from '../Components/GoalAssistModal'
 
 // Gender sequence: m, f, f, m, m, f, f, m, m, f, f ...
 function getGenderForPoint(i, first) {
@@ -82,6 +83,8 @@ export default function GameSheetPage({ org, roster }) {
   const [halftimeAfterPoint, setHalftimeAfterPoint] = useState(null)
   const [gameStartTime,      setGameStartTime]     = useState('')
   const [gameEndTime,        setGameEndTime]       = useState('')
+  const [pendingDelete,      setPendingDelete]     = useState(null)
+  const [pendingPoint,       setPendingPoint]      = useState(null)  // { scoredBy, newOur, newTheir, pointNum, pointGender, lineSnapshot }
 
   const gridRef = useRef(null)
 
@@ -296,19 +299,32 @@ export default function GameSheetPage({ org, roster }) {
 
   const recordPoint = (scoredBy) => {
     if (!game) return
-    const newOur   = scoredBy === 'us'   ? ourScore + 1 : ourScore
-    const newTheir = scoredBy === 'them' ? theirScore + 1 : theirScore
-    const pointNum    = curIdx
-    const pointGender = curGender
+    const newOur       = scoredBy === 'us'   ? ourScore + 1 : ourScore
+    const newTheir     = scoredBy === 'them' ? theirScore + 1 : theirScore
+    const pointNum     = curIdx
+    const pointGender  = curGender
     const lineSnapshot = [...curLine]
 
+    if (scoredBy === 'us') {
+      // Pause and ask for goal/assist before committing
+      setPendingPoint({ scoredBy, newOur, newTheir, pointNum, pointGender, lineSnapshot })
+      return
+    }
+
+    commitPoint({ scoredBy, newOur, newTheir, pointNum, pointGender, lineSnapshot, goalScorerId: null, assistPlayerId: null })
+  }
+
+  const commitPoint = ({ scoredBy, newOur, newTheir, pointNum, pointGender, lineSnapshot, goalScorerId, assistPlayerId }) => {
     setPoints(prev => [...prev, { gender: pointGender, scoredBy, ourScoreAfter: newOur, theirScoreAfter: newTheir }])
+    setPendingPoint(null)
     scrollToCurrent()
 
     supabase.from('game_points').insert({
       game_id: game.id, point_number: pointNum, gender: pointGender,
       scored_by: scoredBy, player_ids: lineSnapshot,
       our_score_after: newOur, their_score_after: newTheir,
+      goal_scorer_id: goalScorerId || null,
+      assist_player_id: assistPlayerId || null,
     }).then(({ error }) => { if (error) console.error('game_points insert:', error) })
 
     supabase.from('games').update({ our_score: newOur, their_score: newTheir })
@@ -370,6 +386,15 @@ export default function GameSheetPage({ org, roster }) {
     } finally { setSavingEnd(false) }
   }
 
+  const handleDeleteGame = async (gameId) => {
+    await supabase.from('game_points').delete().eq('game_id', gameId)
+    await supabase.from('spirit_ratings').delete().eq('game_id', gameId)
+    await supabase.from('games').delete().eq('id', gameId)
+    localStorage.removeItem(`ucs_game_${gameId}`)
+    setCompletedGames(prev => prev.filter(g => g.id !== gameId))
+    setPendingDelete(null)
+  }
+
   // ── No active game ────────────────────────────────────────────────────────
   if (!setup) {
     return (
@@ -388,15 +413,25 @@ export default function GameSheetPage({ org, roster }) {
               const won = g.our_score > g.their_score
               const lost = g.our_score < g.their_score
               return (
-                <button key={g.id} onClick={() => loadCompletedGame(g)} style={S.pastGameRow}>
-                  <div style={S.pastGameLeft}>
-                    <span style={S.pastOpponent}>vs {g.opponent}</span>
-                    <span style={S.pastDate}>{dateStr}</span>
-                  </div>
-                  <div style={{ ...S.pastScore, color: won ? '#00e5a0' : lost ? '#ff4d6d' : '#e8eaf0' }}>
-                    {g.our_score} – {g.their_score}
-                  </div>
-                </button>
+                <div key={g.id} style={S.pastGameRowWrap}>
+                  <button onClick={() => loadCompletedGame(g)} style={S.pastGameBtn}>
+                    <div style={S.pastGameLeft}>
+                      <span style={S.pastOpponent}>vs {g.opponent}</span>
+                      <span style={S.pastDate}>{dateStr}</span>
+                    </div>
+                    <div style={{ ...S.pastScore, color: won ? '#00e5a0' : lost ? '#ff4d6d' : '#e8eaf0' }}>
+                      {g.our_score} – {g.their_score}
+                    </div>
+                  </button>
+                  {pendingDelete === g.id ? (
+                    <div style={S.deleteConfirmRow}>
+                      <button onClick={() => setPendingDelete(null)} style={S.cancelDeleteBtn}>Cancel</button>
+                      <button onClick={() => handleDeleteGame(g.id)} style={S.confirmDeleteBtn}>Delete</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setPendingDelete(g.id)} style={S.pastDeleteBtn}>✕</button>
+                  )}
+                </div>
               )
             })}
           </div>
@@ -424,6 +459,13 @@ export default function GameSheetPage({ org, roster }) {
       {showEndDialog && (
         <GameEndDialog ourScore={ourScore} theirScore={theirScore} opponent={setup.opponent}
           onSave={handleSaveEnd} onCancel={() => setShowEndDialog(false)} saving={savingEnd} />
+      )}
+      {pendingPoint && (
+        <GoalAssistModal
+          players={players.filter(p => pendingPoint.lineSnapshot.includes(p.id))}
+          onConfirm={(goalScorerId, assistPlayerId) => commitPoint({ ...pendingPoint, goalScorerId, assistPlayerId })}
+          onSkip={() => commitPoint({ ...pendingPoint, goalScorerId: null, assistPlayerId: null })}
+        />
       )}
       {showGameInfo && (
         <GameInfoModal
@@ -1026,10 +1068,31 @@ const S = {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, fontWeight: 800,
     color: '#4a5068', textTransform: 'uppercase', letterSpacing: 1, padding: '0 4px 10px',
   },
-  pastGameRow: {
+  pastGameRowWrap: {
+    display: 'flex', alignItems: 'stretch',
+    background: '#181c26', border: '1px solid #2a2f42',
+    borderRadius: 8, marginBottom: 8, overflow: 'hidden',
+  },
+  pastGameBtn: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    width: '100%', background: '#181c26', border: '1px solid #2a2f42',
-    borderRadius: 8, padding: '12px 14px', marginBottom: 8, cursor: 'pointer', textAlign: 'left',
+    flex: 1, padding: '12px 14px', cursor: 'pointer', textAlign: 'left',
+    background: 'transparent', border: 'none',
+  },
+  pastDeleteBtn: {
+    padding: '0 14px', background: 'transparent', border: 'none',
+    borderLeft: '1px solid #2a2f42', color: '#4a5068', cursor: 'pointer',
+    fontSize: 14, fontWeight: 700, lineHeight: 1,
+  },
+  deleteConfirmRow: { display: 'flex', alignItems: 'stretch', borderLeft: '1px solid #2a2f42' },
+  cancelDeleteBtn: {
+    padding: '0 10px', background: 'transparent', border: 'none', borderRight: '1px solid #2a2f42',
+    color: '#7a8099', cursor: 'pointer', fontSize: 11, fontWeight: 700,
+    fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5,
+  },
+  confirmDeleteBtn: {
+    padding: '0 12px', background: 'rgba(255,77,109,0.15)', border: 'none',
+    color: '#ff4d6d', cursor: 'pointer', fontSize: 11, fontWeight: 700,
+    fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5,
   },
   pastGameLeft: { display: 'flex', flexDirection: 'column', gap: 3 },
   pastOpponent: {
