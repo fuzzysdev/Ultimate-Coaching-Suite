@@ -138,7 +138,11 @@ export default function GameSheetPage({ org, roster }) {
       .from('games').select('*')
       .eq('roster_id', roster.id).eq('status', 'active')
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
-    if (!activeGame) return
+    if (!activeGame) {
+      setGame(null); setSetup(null); setPoints([]); setLines({})
+      setOurTO(0); setTheirTO(0); setPlayerStatus({})
+      return
+    }
 
     const { data: gamePoints } = await supabase
       .from('game_points').select('*')

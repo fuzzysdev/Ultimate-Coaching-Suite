@@ -18,7 +18,33 @@ export default function GoalAssistModal({ players, onConfirm, onSkip }) {
       <div style={s.modal}>
         <div style={s.title}>Point Recorded</div>
 
-        {/* Goal scorer */}
+        {/* Assist (thrower) — shown first */}
+        <div style={s.section}>
+          <div style={s.sectionTitle}>Who threw? (assist)</div>
+          <div style={s.playerList}>
+            {players.map(p => (
+              <button
+                key={p.id}
+                onClick={() => { setAssistPlayerId(p.id); setAssistUnknown(false) }}
+                style={{ ...s.playerBtn, ...(assistPlayerId === p.id && !assistUnknown ? s.playerBtnActive : {}) }}
+                disabled={assistUnknown}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+          <label style={s.unknownLabel}>
+            <input
+              type="checkbox"
+              checked={assistUnknown}
+              onChange={e => { setAssistUnknown(e.target.checked); if (e.target.checked) setAssistPlayerId(null) }}
+              style={s.checkbox}
+            />
+            Unknown
+          </label>
+        </div>
+
+        {/* Goal scorer (catcher) — shown second */}
         <div style={s.section}>
           <div style={s.sectionTitle}>Who scored? (caught)</div>
           <div style={s.playerList}>
@@ -38,32 +64,6 @@ export default function GoalAssistModal({ players, onConfirm, onSkip }) {
               type="checkbox"
               checked={goalUnknown}
               onChange={e => { setGoalUnknown(e.target.checked); if (e.target.checked) setGoalScorerId(null) }}
-              style={s.checkbox}
-            />
-            Unknown
-          </label>
-        </div>
-
-        {/* Assist */}
-        <div style={s.section}>
-          <div style={s.sectionTitle}>Who assisted? (threw)</div>
-          <div style={s.playerList}>
-            {players.map(p => (
-              <button
-                key={p.id}
-                onClick={() => { setAssistPlayerId(p.id); setAssistUnknown(false) }}
-                style={{ ...s.playerBtn, ...(assistPlayerId === p.id && !assistUnknown ? s.playerBtnActive : {}) }}
-                disabled={assistUnknown}
-              >
-                {p.name}
-              </button>
-            ))}
-          </div>
-          <label style={s.unknownLabel}>
-            <input
-              type="checkbox"
-              checked={assistUnknown}
-              onChange={e => { setAssistUnknown(e.target.checked); if (e.target.checked) setAssistPlayerId(null) }}
               style={s.checkbox}
             />
             Unknown
