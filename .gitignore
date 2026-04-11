@@ -33,3 +33,6 @@ dist-ssr
 
 # Claude Code local settings
 .claude/
+
+# MCP server config (contains API tokens)
+.mcp.json
