@@ -87,8 +87,13 @@ export default function GameSheetPage({ org, roster }) {
   const [pendingPoint,       setPendingPoint]      = useState(null)  // { scoredBy, newOur, newTheir, pointNum, pointGender, lineSnapshot }
   const [reorderMode,        setReorderMode]       = useState(false)
   const [playerOrder,        setPlayerOrder]       = useState([])   // ordered player objects for reorder panel
+  const [liveMode,           setLiveMode]          = useState(false)
+  const [liveCoaches,        setLiveCoaches]       = useState(0)
 
-  const gridRef = useRef(null)
+  const gridRef        = useRef(null)
+  const channelRef     = useRef(null)
+  const liveTimerRef   = useRef(null)
+  const presenceKeyRef = useRef(`c-${Math.random().toString(36).slice(2, 8)}`)
 
   // Persist working state to localStorage
   useEffect(() => {
@@ -106,6 +111,14 @@ export default function GameSheetPage({ org, roster }) {
     loadActiveGame()
     fetchCompletedGames()
   }, [roster?.id])
+
+  // Cleanup realtime channel on unmount
+  useEffect(() => {
+    return () => {
+      if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null }
+      clearTimeout(liveTimerRef.current)
+    }
+  }, [])
 
   const fetchPlayers = async () => {
     if (!roster?.id) return
@@ -175,6 +188,7 @@ export default function GameSheetPage({ org, roster }) {
     setOurTO(activeGame.our_timeouts_used || 0)
     setTheirTO(activeGame.their_timeouts_used || 0)
     scrollToCurrent()
+    checkLiveMode(activeGame)
   }
 
   const fetchCompletedGames = async () => {
@@ -336,10 +350,20 @@ export default function GameSheetPage({ org, roster }) {
       .then(({ error }) => { if (error) console.error('games score update:', error) })
   }
 
-  const undoPoint = () => {
+  const undoPoint = async () => {
     if (!game || points.length === 0) return
-    const lastIdx = points.length - 1
-    setPoints(prev => prev.slice(0, -1))
+    let lastIdx
+    if (liveMode) {
+      // In live mode, re-fetch the true latest point from DB to avoid undoing a stale index
+      const { data } = await supabase
+        .from('game_points').select('point_number')
+        .eq('game_id', game.id).order('point_number', { ascending: false }).limit(1).maybeSingle()
+      if (!data) return
+      lastIdx = data.point_number
+    } else {
+      lastIdx = points.length - 1
+    }
+    setPoints(prev => prev.filter((_, i) => i !== lastIdx))
     supabase.from('game_points').delete()
       .eq('game_id', game.id).eq('point_number', lastIdx)
       .then(({ error }) => { if (error) console.error('undo delete:', error) })
@@ -382,7 +406,9 @@ export default function GameSheetPage({ org, roster }) {
     setSavingEnd(true)
     try {
       await supabase.from('spirit_ratings').insert({ game_id: game.id, ...ratings })
-      await supabase.from('games').update({ status: 'completed', ended_at: new Date().toISOString() }).eq('id', game.id)
+      await supabase.from('games').update({ status: 'completed', ended_at: new Date().toISOString(), live_mode: false }).eq('id', game.id)
+      unsubscribe()
+      setLiveMode(false)
       if (game?.id) localStorage.removeItem(`ucs_game_${game.id}`)
       setShowEndDialog(false); setGame(null); setSetup(null); setPoints([]); setLines({})
       setPlayerStatus({}); setHalftimeAfterPoint(null); setGameStartTime(''); setGameEndTime('')
@@ -438,6 +464,82 @@ export default function GameSheetPage({ org, roster }) {
   }
 
   const cancelReorder = () => setReorderMode(false)
+
+  // ── Live mode ─────────────────────────────────────────────────────────────
+  const refetchPoints = async (gameId) => {
+    const { data } = await supabase
+      .from('game_points').select('*')
+      .eq('game_id', gameId).order('point_number')
+    if (!data) return
+    setPoints(data.map(gp => ({
+      gender: gp.gender, scoredBy: gp.scored_by,
+      ourScoreAfter: gp.our_score_after, theirScoreAfter: gp.their_score_after,
+    })))
+  }
+
+  const unsubscribe = () => {
+    if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null }
+    clearTimeout(liveTimerRef.current); liveTimerRef.current = null
+    setLiveCoaches(0)
+  }
+
+  const disableLiveMode = async (gameId) => {
+    await supabase.from('games').update({ live_mode: false }).eq('id', gameId)
+    setLiveMode(false)
+    unsubscribe()
+  }
+
+  const subscribe = (gameId, expiresAt) => {
+    if (channelRef.current) return
+    const msLeft = new Date(expiresAt).getTime() - Date.now()
+    liveTimerRef.current = setTimeout(() => disableLiveMode(gameId), msLeft)
+
+    const ch = supabase.channel(`game-live:${gameId}`, {
+      config: { presence: { key: presenceKeyRef.current } }
+    })
+    ch
+      .on('presence', { event: 'sync' }, () => {
+        setLiveCoaches(Object.keys(ch.presenceState()).length)
+      })
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'game_points', filter: `game_id=eq.${gameId}`
+      }, () => refetchPoints(gameId))
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}`
+      }, ({ new: row }) => {
+        if (!row.live_mode) { setLiveMode(false); unsubscribe(); return }
+        setOurTO(row.our_timeouts_used || 0)
+        setTheirTO(row.their_timeouts_used || 0)
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await ch.track({ joined_at: new Date().toISOString() })
+        }
+      })
+    channelRef.current = ch
+  }
+
+  const checkLiveMode = (g) => {
+    if (!g.live_mode || !g.live_mode_expires_at) return
+    if (new Date(g.live_mode_expires_at) <= new Date()) {
+      supabase.from('games').update({ live_mode: false }).eq('id', g.id)
+      return
+    }
+    setLiveMode(true)
+    subscribe(g.id, g.live_mode_expires_at)
+  }
+
+  const toggleLiveMode = async () => {
+    if (!game) return
+    if (liveMode) {
+      await disableLiveMode(game.id)
+    } else {
+      const expiresAt = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString()
+      await supabase.from('games').update({ live_mode: true, live_mode_expires_at: expiresAt }).eq('id', game.id)
+      setLiveMode(true)
+      subscribe(game.id, expiresAt)
+    }
+  }
 
   // ── No active game ────────────────────────────────────────────────────────
   if (!setup) {
@@ -572,6 +674,12 @@ export default function GameSheetPage({ org, roster }) {
               </span>
             )}
           </div>
+          {liveMode && (
+            <div style={S.liveBadge}>
+              <span style={S.liveDot} />
+              LIVE{liveCoaches > 0 ? ` · ${liveCoaches}` : ''}
+            </div>
+          )}
         </div>
 
         {/* Right — their score */}
@@ -608,6 +716,8 @@ export default function GameSheetPage({ org, roster }) {
           <button onClick={undoPoint} style={S.btnUndo} disabled={points.length === 0}>↩ Undo</button>
           <button onClick={() => setShowEndDialog(true)} style={S.btnEnd}>End</button>
           <button onClick={enterReorder} style={S.btnReorder} title="Reorder players">⇅</button>
+          <button onClick={toggleLiveMode} style={{ ...S.btnLive, ...(liveMode ? S.btnLiveOn : {}) }}
+            title={liveMode ? 'Turn off live sync' : 'Turn on live sync'}>⊙</button>
           <button onClick={() => setLightGrid(l => !l)} style={S.btnLight}>
             {lightGrid ? '🌙' : '☀️'}
           </button>
@@ -1259,6 +1369,23 @@ const S = {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 900,
     color: '#7a8099', background: 'transparent', border: '1px solid #2a2f42',
     borderRadius: 7, padding: '4px 8px', cursor: 'pointer', lineHeight: 1, flexShrink: 0,
+  },
+  btnLive: {
+    background: 'transparent', border: '1px solid #2a2f42', color: '#4a5068',
+    borderRadius: 7, fontSize: 16, fontWeight: 900,
+    padding: '4px 8px', cursor: 'pointer', lineHeight: 1, flexShrink: 0,
+  },
+  btnLiveOn: {
+    border: '1px solid #00e5a0', color: '#00e5a0', background: 'rgba(0,229,160,0.1)',
+  },
+  liveBadge: {
+    display: 'flex', alignItems: 'center', gap: 5,
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 9, fontWeight: 800,
+    color: '#00e5a0', textTransform: 'uppercase', letterSpacing: 1,
+    background: 'rgba(0,229,160,0.12)', padding: '2px 8px', borderRadius: 10,
+  },
+  liveDot: {
+    width: 6, height: 6, borderRadius: '50%', background: '#00e5a0', flexShrink: 0,
   },
 
   // Reorder panel
