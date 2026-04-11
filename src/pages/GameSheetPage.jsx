@@ -446,21 +446,21 @@ export default function GameSheetPage({ org, roster }) {
     })
   }
 
-  const saveOrder = async () => {
-    // Assign sort_order per gender group independently
+  const saveOrder = () => {
+    // Update UI immediately, persist to DB in background
+    setPlayers(playerOrder)
+    setReorderMode(false)
     const females = playerOrder.filter(p => p.gender === 'Female')
     const males   = playerOrder.filter(p => p.gender === 'Male')
     const toSave  = [
       ...females.map((p, i) => ({ id: p.id, sort_order: i })),
       ...males.map((p,   i) => ({ id: p.id, sort_order: i })),
     ]
-    await Promise.all(
+    Promise.all(
       toSave.map(({ id, sort_order }) =>
         supabase.from('players').update({ sort_order }).eq('id', id)
       )
-    )
-    setPlayers(playerOrder)
-    setReorderMode(false)
+    ).catch(err => console.error('saveOrder error:', err))
   }
 
   const cancelReorder = () => setReorderMode(false)
@@ -1026,7 +1026,6 @@ function ReorderGroup({ players, label, color, gender, onReorder }) {
     dragIdx.current = idx
     overIdx.current = idx
     startY.current  = e.touches[0].clientY
-    e.currentTarget.closest('[data-reorder-list]').style.userSelect = 'none'
   }
 
   const onTouchMove = (e) => {
@@ -1088,7 +1087,7 @@ function ReorderGroup({ players, label, color, gender, onReorder }) {
         onTouchEnd={onTouchEnd}
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseUp}
-        style={{ touchAction: 'none' }}
+        style={{}}
       >
         {players.map((p, idx) => (
           <div
@@ -1107,7 +1106,7 @@ function ReorderGroup({ players, label, color, gender, onReorder }) {
               onTouchStart={(e) => onTouchStart(e, idx)}
               onMouseDown={(e) => onMouseDown(e, idx)}
               style={{ padding: '0 12px', cursor: 'grab', color: '#2a2f42',
-                fontSize: 16, lineHeight: 1, userSelect: 'none',
+                fontSize: 16, lineHeight: 1, userSelect: 'none', touchAction: 'none',
                 display: 'flex', alignItems: 'center', alignSelf: 'stretch' }}>
               ⣿
             </div>
