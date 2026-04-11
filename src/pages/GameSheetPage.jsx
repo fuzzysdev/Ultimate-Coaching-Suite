@@ -85,6 +85,8 @@ export default function GameSheetPage({ org, roster }) {
   const [gameEndTime,        setGameEndTime]       = useState('')
   const [pendingDelete,      setPendingDelete]     = useState(null)
   const [pendingPoint,       setPendingPoint]      = useState(null)  // { scoredBy, newOur, newTheir, pointNum, pointGender, lineSnapshot }
+  const [reorderMode,        setReorderMode]       = useState(false)
+  const [playerOrder,        setPlayerOrder]       = useState([])   // ordered player objects for reorder panel
 
   const gridRef = useRef(null)
 
@@ -109,8 +111,10 @@ export default function GameSheetPage({ org, roster }) {
     if (!roster?.id) return
     setLoadingPlayers(true)
     const { data } = await supabase
-      .from('players').select('id, name, gender, position')
-      .eq('roster_id', roster.id).order('name')
+      .from('players').select('id, name, gender, position, sort_order')
+      .eq('roster_id', roster.id)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('name')
     setPlayers(data || [])
     setLoadingPlayers(false)
   }
@@ -395,6 +399,46 @@ export default function GameSheetPage({ org, roster }) {
     setPendingDelete(null)
   }
 
+  // ── Reorder ───────────────────────────────────────────────────────────────
+  const enterReorder = () => {
+    setPlayerOrder([...players])
+    setReorderMode(true)
+  }
+
+  const reorderGroup = (gender, fromIdx, toIdx) => {
+    if (fromIdx === toIdx) return
+    setPlayerOrder(prev => {
+      const group  = prev.filter(p => p.gender === gender)
+      const next   = [...group]
+      const [moved] = next.splice(fromIdx, 1)
+      next.splice(toIdx, 0, moved)
+      // Rebuild full list, replacing gender slots in-order
+      const result = [...prev]
+      let gi = 0
+      result.forEach((p, i) => { if (p.gender === gender) result[i] = next[gi++] })
+      return result
+    })
+  }
+
+  const saveOrder = async () => {
+    // Assign sort_order per gender group independently
+    const females = playerOrder.filter(p => p.gender === 'Female')
+    const males   = playerOrder.filter(p => p.gender === 'Male')
+    const toSave  = [
+      ...females.map((p, i) => ({ id: p.id, sort_order: i })),
+      ...males.map((p,   i) => ({ id: p.id, sort_order: i })),
+    ]
+    await Promise.all(
+      toSave.map(({ id, sort_order }) =>
+        supabase.from('players').update({ sort_order }).eq('id', id)
+      )
+    )
+    setPlayers(playerOrder)
+    setReorderMode(false)
+  }
+
+  const cancelReorder = () => setReorderMode(false)
+
   // ── No active game ────────────────────────────────────────────────────────
   if (!setup) {
     return (
@@ -563,16 +607,56 @@ export default function GameSheetPage({ org, roster }) {
           <button onClick={() => recordPoint('them')} style={S.btnThem}>▲ They Scored</button>
           <button onClick={undoPoint} style={S.btnUndo} disabled={points.length === 0}>↩ Undo</button>
           <button onClick={() => setShowEndDialog(true)} style={S.btnEnd}>End</button>
+          <button onClick={enterReorder} style={S.btnReorder} title="Reorder players">⇅</button>
           <button onClick={() => setLightGrid(l => !l)} style={S.btnLight}>
             {lightGrid ? '🌙' : '☀️'}
           </button>
         </div>
       )}
 
+      {/* ── Reorder Panel ── */}
+      {reorderMode && (
+        <div style={S.reorderPanel}>
+          <div style={S.reorderHeader}>
+            <span style={S.reorderTitle}>Reorder Players</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={cancelReorder} style={S.reorderCancelBtn}>Cancel</button>
+              <button onClick={saveOrder} style={S.reorderDoneBtn}>Save</button>
+            </div>
+          </div>
+          {isSingle ? (
+            <ReorderGroup
+              players={playerOrder}
+              label={null}
+              color="#00e5a0"
+              gender={playerOrder[0]?.gender || 'Male'}
+              onReorder={reorderGroup}
+            />
+          ) : (
+            <>
+              <ReorderGroup
+                players={playerOrder.filter(p => p.gender === 'Female')}
+                label="Female"
+                color="#ff80c8"
+                gender="Female"
+                onReorder={reorderGroup}
+              />
+              <ReorderGroup
+                players={playerOrder.filter(p => p.gender === 'Male')}
+                label="Male"
+                color="#4d9fff"
+                gender="Male"
+                onReorder={reorderGroup}
+              />
+            </>
+          )}
+        </div>
+      )}
+
       {/* ── Grid ── */}
-      {loadingPlayers ? (
+      {!reorderMode && loadingPlayers ? (
         <div style={S.loading}>Loading...</div>
-      ) : (
+      ) : !reorderMode && (
         <div style={{ ...S.gridWrap, background: gt.gridBg }} ref={gridRef}>
 
           {/* Pt # header row */}
@@ -820,6 +904,122 @@ function EmptySection({ label, stickyName, colIndices, colCell, rowH, gt }) {
   )
 }
 
+function ReorderGroup({ players, label, color, gender, onReorder }) {
+  const ROW_H = 44
+  const dragIdx   = useRef(null)  // index being dragged
+  const overIdx   = useRef(null)  // index currently hovered over
+  const startY    = useRef(0)
+  const [dragOver, setDragOver] = useState(null)  // index with drop indicator
+
+  // ── Touch handlers ────────────────────────────────────────────────────────
+  const onTouchStart = (e, idx) => {
+    dragIdx.current = idx
+    overIdx.current = idx
+    startY.current  = e.touches[0].clientY
+    e.currentTarget.closest('[data-reorder-list]').style.userSelect = 'none'
+  }
+
+  const onTouchMove = (e) => {
+    if (dragIdx.current === null) return
+    e.preventDefault()
+    const y       = e.touches[0].clientY
+    const list    = e.currentTarget
+    const rect    = list.getBoundingClientRect()
+    const relY    = y - rect.top
+    const newIdx  = Math.max(0, Math.min(players.length - 1, Math.floor(relY / ROW_H)))
+    if (newIdx !== overIdx.current) {
+      overIdx.current = newIdx
+      setDragOver(newIdx)
+    }
+  }
+
+  const onTouchEnd = () => {
+    if (dragIdx.current !== null && overIdx.current !== null) {
+      onReorder(gender, dragIdx.current, overIdx.current)
+    }
+    dragIdx.current = null
+    overIdx.current = null
+    setDragOver(null)
+  }
+
+  // ── Mouse handlers (desktop) ──────────────────────────────────────────────
+  const onMouseDown = (e, idx) => {
+    dragIdx.current = idx
+    overIdx.current = idx
+  }
+
+  const onMouseEnterRow = (idx) => {
+    if (dragIdx.current === null) return
+    overIdx.current = idx
+    setDragOver(idx)
+  }
+
+  const onMouseUp = () => {
+    if (dragIdx.current !== null && overIdx.current !== null) {
+      onReorder(gender, dragIdx.current, overIdx.current)
+    }
+    dragIdx.current = null
+    overIdx.current = null
+    setDragOver(null)
+  }
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      {label && (
+        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 9, fontWeight: 800,
+          color, textTransform: 'uppercase', letterSpacing: 1.5,
+          padding: '6px 14px 4px', borderBottom: `1px solid ${color}44` }}>
+          {label}
+        </div>
+      )}
+      <div
+        data-reorder-list
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+        style={{ touchAction: 'none' }}
+      >
+        {players.map((p, idx) => (
+          <div
+            key={p.id}
+            onMouseEnter={() => onMouseEnterRow(idx)}
+            style={{ display: 'flex', alignItems: 'center',
+              height: ROW_H, paddingRight: 8,
+              borderBottom: dragOver === idx && dragOver !== dragIdx.current
+                ? `2px solid ${color}`
+                : '1px solid #1a1e2a',
+              background: dragIdx.current === idx ? '#1a1e2a' : '#0f1117',
+              transition: 'background 0.1s',
+            }}>
+            {/* Drag handle */}
+            <div
+              onTouchStart={(e) => onTouchStart(e, idx)}
+              onMouseDown={(e) => onMouseDown(e, idx)}
+              style={{ padding: '0 12px', cursor: 'grab', color: '#2a2f42',
+                fontSize: 16, lineHeight: 1, userSelect: 'none',
+                display: 'flex', alignItems: 'center', alignSelf: 'stretch' }}>
+              ⣿
+            </div>
+            <span style={{ flex: 1, fontFamily: "'Barlow Condensed', sans-serif",
+              fontSize: 14, fontWeight: 800, color: '#e8eaf0',
+              textTransform: 'uppercase', letterSpacing: 0.3, pointerEvents: 'none' }}>
+              {p.name}
+            </span>
+            {p.position && (
+              <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 9,
+                fontWeight: 700, background: '#1f2435', color: '#5a6280',
+                padding: '2px 4px', borderRadius: 3, letterSpacing: 0.5, pointerEvents: 'none' }}>
+                {POS[p.position] || p.position}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Game Info Modal ───────────────────────────────────────────────────────────
 
 function GameInfoModal({ setup, points, halftimeAfterPoint, onMarkHalftime, onClearHalftime,
@@ -1054,6 +1254,37 @@ const S = {
   btnLight: {
     background: 'transparent', border: '1px solid #2a2f42', borderRadius: 7,
     fontSize: 16, padding: '4px 8px', cursor: 'pointer', lineHeight: 1, flexShrink: 0
+  },
+  btnReorder: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 900,
+    color: '#7a8099', background: 'transparent', border: '1px solid #2a2f42',
+    borderRadius: 7, padding: '4px 8px', cursor: 'pointer', lineHeight: 1, flexShrink: 0,
+  },
+
+  // Reorder panel
+  reorderPanel: {
+    flex: 1, overflowY: 'auto', minHeight: 0, background: '#0f1117',
+  },
+  reorderHeader: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '10px 14px', background: '#181c26', borderBottom: '1px solid #2a2f42',
+    position: 'sticky', top: 0, zIndex: 4,
+  },
+  reorderTitle: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 900,
+    color: '#e8eaf0', textTransform: 'uppercase', letterSpacing: 1.5,
+  },
+  reorderCancelBtn: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 800,
+    color: '#7a8099', background: 'transparent', border: '1px solid #2a2f42',
+    borderRadius: 7, padding: '5px 14px', cursor: 'pointer',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+  },
+  reorderDoneBtn: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 800,
+    color: '#0f1117', background: '#00e5a0', border: 'none',
+    borderRadius: 7, padding: '5px 16px', cursor: 'pointer',
+    textTransform: 'uppercase', letterSpacing: 0.5,
   },
 
   loading: {
