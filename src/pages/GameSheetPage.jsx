@@ -429,6 +429,20 @@ export default function GameSheetPage({ org, roster }) {
     setPendingDelete(null)
   }
 
+  const handleAbandonGame = async () => {
+    if (!game) return
+    await supabase.from('game_points').delete().eq('game_id', game.id)
+    await supabase.from('spirit_ratings').delete().eq('game_id', game.id)
+    await supabase.from('games').delete().eq('id', game.id)
+    localStorage.removeItem(`ucs_game_${game.id}`)
+    unsubscribe()
+    setLiveMode(false)
+    setShowGameInfo(false)
+    setGame(null); setSetup(null); setPoints([]); setLines({})
+    setOurTO(0); setTheirTO(0); setPlayerStatus({})
+    setHalftimeAfterPoint(null); setGameStartTime(''); setGameEndTime('')
+  }
+
   // ── Reorder ───────────────────────────────────────────────────────────────
   const enterReorder = () => {
     setPlayerOrder([...players])
@@ -625,6 +639,7 @@ export default function GameSheetPage({ org, roster }) {
           startTime={gameStartTime} endTime={gameEndTime}
           onChangeStartTime={setGameStartTime} onChangeEndTime={setGameEndTime}
           onUpdateSetup={(updates) => setSetup(prev => ({ ...prev, ...updates }))}
+          onAbandon={handleAbandonGame}
           onClose={() => setShowGameInfo(false)}
         />
       )}
@@ -1136,10 +1151,11 @@ function ReorderGroup({ players, label, color, gender, onReorder }) {
 // ── Game Info Modal ───────────────────────────────────────────────────────────
 
 function GameInfoModal({ setup, points, halftimeAfterPoint, onMarkHalftime, onClearHalftime,
-  startTime, endTime, onChangeStartTime, onChangeEndTime, onUpdateSetup, onClose }) {
+  startTime, endTime, onChangeStartTime, onChangeEndTime, onUpdateSetup, onAbandon, onClose }) {
 
-  const [timerSecs,    setTimerSecs]    = useState(0)
-  const [timerRunning, setTimerRunning] = useState(false)
+  const [timerSecs,      setTimerSecs]      = useState(0)
+  const [timerRunning,   setTimerRunning]   = useState(false)
+  const [abandonConfirm, setAbandonConfirm] = useState(false)
   const timerRef = useRef(null)
   const MAX_TIMER = 15 * 60
 
@@ -1259,6 +1275,23 @@ function GameInfoModal({ setup, points, halftimeAfterPoint, onMarkHalftime, onCl
               Reset
             </button>
           </div>
+        </div>
+
+        {/* Abandon game */}
+        <div style={MS.section}>
+          {!abandonConfirm ? (
+            <button onClick={() => setAbandonConfirm(true)} style={MS.abandonBtn}>
+              Exit Without Saving
+            </button>
+          ) : (
+            <div style={MS.abandonConfirmBox}>
+              <div style={MS.abandonWarning}>Delete this game and all its points? This cannot be undone.</div>
+              <div style={MS.abandonBtns}>
+                <button onClick={() => setAbandonConfirm(false)} style={MS.abandonKeepBtn}>Keep Playing</button>
+                <button onClick={onAbandon} style={MS.abandonConfirmBtn}>Delete Game</button>
+              </div>
+            </div>
+          )}
         </div>
 
         <button onClick={onClose} style={MS.closeBtn}>Done</button>
@@ -1543,6 +1576,31 @@ const MS = {
     flex: 1, border: 'none', borderRadius: 8,
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14, fontWeight: 800,
     padding: '10px 0', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer',
+  },
+
+  // Abandon game
+  abandonBtn: {
+    background: 'rgba(255,77,109,0.08)', border: '1px solid rgba(255,77,109,0.35)',
+    borderRadius: 8, color: '#ff4d6d',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 800,
+    padding: '10px 0', textTransform: 'uppercase', letterSpacing: 0.5,
+    cursor: 'pointer', width: '100%',
+  },
+  abandonConfirmBox: { display: 'flex', flexDirection: 'column', gap: 10 },
+  abandonWarning: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 700,
+    color: '#e8eaf0', textAlign: 'center', lineHeight: 1.4,
+  },
+  abandonBtns: { display: 'flex', gap: 8 },
+  abandonKeepBtn: {
+    flex: 1, background: 'transparent', border: '1px solid #2a2f42', borderRadius: 8,
+    color: '#7a8099', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12,
+    fontWeight: 800, padding: '9px 0', textTransform: 'uppercase', cursor: 'pointer',
+  },
+  abandonConfirmBtn: {
+    flex: 1, background: 'rgba(255,77,109,0.15)', border: '1px solid #ff4d6d', borderRadius: 8,
+    color: '#ff4d6d', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12,
+    fontWeight: 800, padding: '9px 0', textTransform: 'uppercase', cursor: 'pointer',
   },
 
   // Close

@@ -102,16 +102,16 @@ const s = {
     display: 'flex', flexDirection: 'column', gap: 8,
   },
   sectionTitle: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 10, fontWeight: 800,
-    color: '#4a5068', textTransform: 'uppercase', letterSpacing: 1.5,
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, fontWeight: 800,
+    color: '#a0a8c0', textTransform: 'uppercase', letterSpacing: 1.5,
   },
   playerList: {
     display: 'flex', flexWrap: 'wrap', gap: 6,
   },
   playerBtn: {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 700,
-    color: '#7a8099', background: '#1f2435', border: '1px solid #2a2f42',
-    borderRadius: 6, padding: '5px 10px', cursor: 'pointer', letterSpacing: 0.3,
+    color: '#c8ccd8', background: '#1f2435', border: '1px solid #3a3f52',
+    borderRadius: 6, padding: '6px 12px', cursor: 'pointer', letterSpacing: 0.3,
     textTransform: 'uppercase',
   },
   playerBtnActive: {
@@ -119,7 +119,7 @@ const s = {
   },
   unknownLabel: {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 700,
-    color: '#4a5068', textTransform: 'uppercase', letterSpacing: 1,
+    color: '#7a8099', textTransform: 'uppercase', letterSpacing: 1,
     display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
     marginTop: 2,
   },
