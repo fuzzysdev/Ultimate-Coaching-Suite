@@ -24,24 +24,45 @@ src/
     RosterPage.jsx     # Player list for a roster
     TryoutsPage.jsx    # Tryout sessions list
     TryoutSessionPage.jsx  # Tryout ranking drag-and-drop
-    GameSheetPage.jsx  # Live game tracking grid
+    GameSheetPage.jsx  # Live game tracking grid (imports from Components + lib below)
     Attendance.jsx     # Attendance tracker
     SuperAdminPage.jsx # Super-admin org management (/superadmin route)
     PlaceholderPage.jsx
   Components/
-    PlayerModal.jsx    # Add/edit player
-    RosterModal.jsx    # Add/edit roster
-    InviteModal.jsx    # Generate/redeem org invite codes
-    CreateOrgModal.jsx # Create new organization
-    ConfirmDialog.jsx  # Generic destructive-action confirm
-    GameSetupDialog.jsx
-    GameEndDialog.jsx
+    PlayerModal.jsx       # Add/edit player
+    RosterModal.jsx       # Add/edit roster
+    InviteModal.jsx       # Generate/redeem org invite codes
+    CreateOrgModal.jsx    # Create new organization
+    ConfirmDialog.jsx     # Generic destructive-action confirm
+    GameSetupDialog.jsx   # New game setup flow
+    GameEndDialog.jsx     # End game + spirit ratings
+    GoalAssistModal.jsx   # Capture goal scorer + assist after "We Scored"
+    GameInfoModal.jsx     # In-game settings: times, halftime, break timer, abandon
+    GameGridRows.jsx      # SectionRow, PlayerRow, EmptySection — grid row sub-components
+    GameReorderPanel.jsx  # ReorderGroup — drag-to-reorder player list
   lib/
-    supabase.js        # Supabase client (reads VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY)
-    offlineStore.js    # localStorage cache + write queue (prefix: ucs_)
+    supabase.js           # Supabase client (reads VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY)
+    offlineStore.js       # localStorage cache + write queue (prefix: ucs_)
+    gameSheetHelpers.js   # Shared constants (NAME_W, COL_W, etc.) + pure helpers
+                          #   (getGenderForPoint, colBg, cellFill, buildTheme, POS)
   hooks/
-    useOnlineStatus.js # Returns isOnline; flushes write queue on reconnect
+    useOnlineStatus.js    # Returns isOnline; flushes write queue on reconnect
+    useGameLiveMode.js    # Supabase Realtime subscribe/unsubscribe + 3-hour auto-shutoff
+                          #   Returns: { subscribe, unsubscribe, disableLiveMode, checkLiveMode, refetchPoints }
 ```
+
+### GameSheetPage split — where things live
+
+`GameSheetPage.jsx` is the most complex page. Its logic is split across several files to keep each file focused:
+
+| Concern | File |
+|---------|------|
+| Grid layout constants & color helpers | `lib/gameSheetHelpers.js` |
+| Realtime live-mode (subscribe/presence/auto-shutoff) | `hooks/useGameLiveMode.js` |
+| In-game settings modal (times, halftime, timer, abandon) | `Components/GameInfoModal.jsx` |
+| Grid rows (section header, player row, empty row) | `Components/GameGridRows.jsx` |
+| Drag-to-reorder player panel | `Components/GameReorderPanel.jsx` |
+| All page state, handlers, and grid JSX | `pages/GameSheetPage.jsx` |
 
 ## Key Conventions
 
@@ -110,6 +131,16 @@ npm run preview  # Preview production build locally
 ### Manifest version (auto-bumped by hook)
 
 iOS Safari caches the PWA aggressively. The manifest `version` field in `vite.config.js` (`APP_VERSION`) is the only reliable cache-bust. A pre-push Claude Code hook (`.claude/bump-version.sh`) **automatically** increments the patch version and amends the last commit before every `git push`. **Do not bump it manually** — the hook handles it.
+
+## Claude Code Skills (slash commands)
+
+Custom skills live in `.claude/commands/`. Invoke with `/skill-name`.
+
+| Command | What it does |
+|---------|-------------|
+| `/push "message"` | Stage tracked files, commit, push. Pre-push hook auto-bumps APP_VERSION. |
+| `/new-modal ComponentName` | Scaffold a new modal in `src/Components/` with full dark-theme boilerplate. |
+| `/new-page PageName "Title"` | Scaffold a new page in `src/pages/` with loading/error state, Supabase fetch stub, dark-theme styles, and attempts to wire into MainShell. |
 
 ## SQL Migrations
 

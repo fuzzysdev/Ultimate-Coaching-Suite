@@ -3,97 +3,47 @@ import { supabase } from '../lib/supabase'
 import GameSetupDialog from '../Components/GameSetupDialog'
 import GameEndDialog from '../Components/GameEndDialog'
 import GoalAssistModal from '../Components/GoalAssistModal'
-
-// Gender sequence: m, f, f, m, m, f, f, m, m, f, f ...
-function getGenderForPoint(i, first) {
-  if (i === 0) return first
-  const other = first === 'm' ? 'f' : 'm'
-  return Math.floor((i - 1) / 2) % 2 === 0 ? other : first
-}
-
-const NAME_W  = 90
-const COL_W   = 44
-const HDR_H   = 24
-const SEC_H   = 20
-const ROW_H   = 38
-const SCORE_H = 24
-const MAX_TO  = 3
-
-const POS = { h: 'H', c: 'C', b: 'Hy', e: 'E' }
-
-function colBg(colIdx, current, light = false) {
-  if (colIdx === current)  return light ? 'rgba(0,180,120,0.10)' : 'rgba(0,229,160,0.06)'
-  if (colIdx < current)    return light ? 'rgba(0,0,0,0.025)' : 'rgba(255,255,255,0.01)'
-  return 'transparent'
-}
-
-function cellFill(selected, colIdx, current, light = false) {
-  if (!selected) return 'transparent'
-  if (colIdx < current)   return light ? 'rgba(0,160,110,0.45)' : 'rgba(0,229,160,0.35)'
-  if (colIdx === current) return light ? '#00c896' : '#00e5a0'
-  return light ? 'rgba(0,160,110,0.22)' : 'rgba(0,229,160,0.18)'
-}
-
-function buildTheme(light) {
-  return light ? {
-    gridBg:      '#f4f5f8',
-    nameBg:      '#ffffff',
-    headerBg:    '#eaecf2',
-    rowBorder:   '#b8bdd0',
-    nameColor:   '#1a1d28',
-    injColor:    '#a06800',
-    posTagBg:    '#e0e3ef',
-    posTagColor: '#5060a0',
-    awayBg:      'rgba(100,110,140,0.15)',
-    awayColor:   '#7a8099',
-    ptNumColor:  (isCur) => isCur ? '#008060' : '#8090b0',
-    light:       true,
-  } : {
-    gridBg:      '#0f1117',
-    nameBg:      '#0f1117',
-    headerBg:    '#181c26',
-    rowBorder:   '#252a3a',
-    nameColor:   '#c8ccd8',
-    injColor:    '#c8a050',
-    posTagBg:    '#1f2435',
-    posTagColor: '#5a6280',
-    awayBg:      'rgba(74,80,104,0.35)',
-    awayColor:   '#7a8099',
-    ptNumColor:  (isCur) => isCur ? '#00e5a0' : '#4a5068',
-    light:       false,
-  }
-}
+import GameInfoModal from '../Components/GameInfoModal'
+import { SectionRow, PlayerRow, EmptySection } from '../Components/GameGridRows'
+import ReorderGroup from '../Components/GameReorderPanel'
+import { useGameLiveMode } from '../hooks/useGameLiveMode'
+import {
+  getGenderForPoint, NAME_W, COL_W, HDR_H, SEC_H, ROW_H, SCORE_H, MAX_TO,
+  colBg, buildTheme,
+} from '../lib/gameSheetHelpers'
 
 export default function GameSheetPage({ org, roster }) {
-  const [players,            setPlayers]           = useState([])
-  const [loadingPlayers,     setLoadingPlayers]    = useState(true)
-  const [game,               setGame]              = useState(null)
-  const [setup,              setSetup]             = useState(null)
-  const [showSetup,          setShowSetup]         = useState(false)
-  const [showEndDialog,      setShowEndDialog]     = useState(false)
-  const [savingEnd,          setSavingEnd]         = useState(false)
-  const [points,             setPoints]            = useState([])
-  const [lines,              setLines]             = useState({})
-  const [ourTO,              setOurTO]             = useState(0)
-  const [theirTO,            setTheirTO]           = useState(0)
-  const [playerStatus,       setPlayerStatus]      = useState({})
-  const [lightGrid,          setLightGrid]         = useState(false)
-  const [completedGames,     setCompletedGames]    = useState([])
-  const [showGameInfo,       setShowGameInfo]      = useState(false)
+  const [players,            setPlayers]            = useState([])
+  const [loadingPlayers,     setLoadingPlayers]     = useState(true)
+  const [game,               setGame]               = useState(null)
+  const [setup,              setSetup]              = useState(null)
+  const [showSetup,          setShowSetup]          = useState(false)
+  const [showEndDialog,      setShowEndDialog]      = useState(false)
+  const [savingEnd,          setSavingEnd]          = useState(false)
+  const [points,             setPoints]             = useState([])
+  const [lines,              setLines]              = useState({})
+  const [ourTO,              setOurTO]              = useState(0)
+  const [theirTO,            setTheirTO]            = useState(0)
+  const [playerStatus,       setPlayerStatus]       = useState({})
+  const [lightGrid,          setLightGrid]          = useState(false)
+  const [completedGames,     setCompletedGames]     = useState([])
+  const [activeGames,        setActiveGames]        = useState([])
+  const [showGameInfo,       setShowGameInfo]       = useState(false)
   const [halftimeAfterPoint, setHalftimeAfterPoint] = useState(null)
-  const [gameStartTime,      setGameStartTime]     = useState('')
-  const [gameEndTime,        setGameEndTime]       = useState('')
-  const [pendingDelete,      setPendingDelete]     = useState(null)
-  const [pendingPoint,       setPendingPoint]      = useState(null)  // { scoredBy, newOur, newTheir, pointNum, pointGender, lineSnapshot }
-  const [reorderMode,        setReorderMode]       = useState(false)
-  const [playerOrder,        setPlayerOrder]       = useState([])   // ordered player objects for reorder panel
-  const [liveMode,           setLiveMode]          = useState(false)
-  const [liveCoaches,        setLiveCoaches]       = useState(0)
+  const [gameStartTime,      setGameStartTime]      = useState('')
+  const [gameEndTime,        setGameEndTime]        = useState('')
+  const [pendingDelete,      setPendingDelete]      = useState(null)
+  const [pendingPoint,       setPendingPoint]       = useState(null)
+  const [reorderMode,        setReorderMode]        = useState(false)
+  const [playerOrder,        setPlayerOrder]        = useState([])
+  const [liveMode,           setLiveMode]           = useState(false)
+  const [liveCoaches,        setLiveCoaches]        = useState(0)
 
-  const gridRef        = useRef(null)
-  const channelRef     = useRef(null)
-  const liveTimerRef   = useRef(null)
-  const presenceKeyRef = useRef(`c-${Math.random().toString(36).slice(2, 8)}`)
+  const gridRef = useRef(null)
+
+  const { subscribe, unsubscribe, disableLiveMode, checkLiveMode, refetchPoints } = useGameLiveMode({
+    setLiveMode, setLiveCoaches, setOurTO, setTheirTO, setPoints,
+  })
 
   // Persist working state to localStorage
   useEffect(() => {
@@ -108,17 +58,8 @@ export default function GameSheetPage({ org, roster }) {
   useEffect(() => {
     if (!roster?.id) return
     fetchPlayers()
-    loadActiveGame()
-    fetchCompletedGames()
+    fetchAllGames()
   }, [roster?.id])
-
-  // Cleanup realtime channel on unmount
-  useEffect(() => {
-    return () => {
-      if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null }
-      clearTimeout(liveTimerRef.current)
-    }
-  }, [])
 
   const fetchPlayers = async () => {
     if (!roster?.id) return
@@ -132,28 +73,30 @@ export default function GameSheetPage({ org, roster }) {
     setLoadingPlayers(false)
   }
 
-  const loadActiveGame = async () => {
+  const fetchAllGames = async () => {
     if (!roster?.id) return
-    const { data: activeGame } = await supabase
-      .from('games').select('*')
-      .eq('roster_id', roster.id).eq('status', 'active')
-      .order('created_at', { ascending: false }).limit(1).maybeSingle()
-    if (!activeGame) {
-      setGame(null); setSetup(null); setPoints([]); setLines({})
-      setOurTO(0); setTheirTO(0); setPlayerStatus({})
-      return
-    }
+    const { data } = await supabase
+      .from('games')
+      .select('id, opponent, our_score, their_score, created_at, status, first_gender, starting_action, direction, line_size, our_timeouts_used, their_timeouts_used')
+      .eq('roster_id', roster.id)
+      .in('status', ['active', 'completed'])
+      .order('created_at', { ascending: false })
+    const all = data || []
+    setActiveGames(all.filter(g => g.status === 'active'))
+    setCompletedGames(all.filter(g => g.status === 'completed'))
+  }
 
+  const openActiveGame = async (g) => {
     const { data: gamePoints } = await supabase
       .from('game_points').select('*')
-      .eq('game_id', activeGame.id).order('point_number')
+      .eq('game_id', g.id).order('point_number')
 
     const restoredSetup = {
-      opponent:       activeGame.opponent,
-      firstGender:    activeGame.first_gender,
-      startingAction: activeGame.starting_action,
-      direction:      activeGame.direction,
-      lineSize:       activeGame.line_size,
+      opponent:       g.opponent,
+      firstGender:    g.first_gender,
+      startingAction: g.starting_action,
+      direction:      g.direction,
+      lineSize:       g.line_size,
     }
 
     const restoredPoints = (gamePoints || []).map(gp => ({
@@ -168,7 +111,7 @@ export default function GameSheetPage({ org, roster }) {
       restoredLines[gp.point_number] = new Set(gp.player_ids || [])
     })
 
-    const cached = localStorage.getItem(`ucs_game_${activeGame.id}`)
+    const cached = localStorage.getItem(`ucs_game_${g.id}`)
     if (cached) {
       try {
         const { lines: linesArr, playerStatus: ps, halftimeAfterPoint: ht, gameStartTime: gst, gameEndTime: get } = JSON.parse(cached)
@@ -182,26 +125,17 @@ export default function GameSheetPage({ org, roster }) {
         if (get) setGameEndTime(get)
       } catch {}
     } else {
-      setGameStartTime(new Date(activeGame.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+      setGameStartTime(new Date(g.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
     }
 
-    setGame(activeGame)
+    setGame(g)
     setSetup(restoredSetup)
     setPoints(restoredPoints)
     setLines(restoredLines)
-    setOurTO(activeGame.our_timeouts_used || 0)
-    setTheirTO(activeGame.their_timeouts_used || 0)
+    setOurTO(g.our_timeouts_used || 0)
+    setTheirTO(g.their_timeouts_used || 0)
     scrollToCurrent()
-    checkLiveMode(activeGame)
-  }
-
-  const fetchCompletedGames = async () => {
-    if (!roster?.id) return
-    const { data } = await supabase
-      .from('games').select('id, opponent, our_score, their_score, created_at')
-      .eq('roster_id', roster.id).eq('status', 'completed')
-      .order('created_at', { ascending: false })
-    setCompletedGames(data || [])
+    checkLiveMode(g)
   }
 
   const loadCompletedGame = async (g) => {
@@ -235,7 +169,7 @@ export default function GameSheetPage({ org, roster }) {
     scrollToCurrent()
   }
 
-  // ── Derived ──────────────────────────────────────────────────────────────
+  // ── Derived ────────────────────────────────────────────────────────────────
   const isSingle   = roster?.gender_type === 'single'
   const curIdx     = points.length
   const ourScore   = points.length ? points[points.length - 1].ourScoreAfter   : 0
@@ -278,7 +212,7 @@ export default function GameSheetPage({ org, roster }) {
     }, 40)
   }
 
-  // ── Handlers ─────────────────────────────────────────────────────────────
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const toggleCell = (playerId, ptIdx) => {
     if (ptIdx < curIdx) return
     if (playerStatus[playerId]) return
@@ -326,13 +260,10 @@ export default function GameSheetPage({ org, roster }) {
     const pointNum     = curIdx
     const pointGender  = curGender
     const lineSnapshot = [...curLine]
-
     if (scoredBy === 'us') {
-      // Pause and ask for goal/assist before committing
       setPendingPoint({ scoredBy, newOur, newTheir, pointNum, pointGender, lineSnapshot })
       return
     }
-
     commitPoint({ scoredBy, newOur, newTheir, pointNum, pointGender, lineSnapshot, goalScorerId: null, assistPlayerId: null })
   }
 
@@ -340,7 +271,6 @@ export default function GameSheetPage({ org, roster }) {
     setPoints(prev => [...prev, { gender: pointGender, scoredBy, ourScoreAfter: newOur, theirScoreAfter: newTheir }])
     setPendingPoint(null)
     scrollToCurrent()
-
     supabase.from('game_points').insert({
       game_id: game.id, point_number: pointNum, gender: pointGender,
       scored_by: scoredBy, player_ids: lineSnapshot,
@@ -348,7 +278,6 @@ export default function GameSheetPage({ org, roster }) {
       goal_scorer_id: goalScorerId || null,
       assist_player_id: assistPlayerId || null,
     }).then(({ error }) => { if (error) console.error('game_points insert:', error) })
-
     supabase.from('games').update({ our_score: newOur, their_score: newTheir })
       .eq('id', game.id)
       .then(({ error }) => { if (error) console.error('games score update:', error) })
@@ -358,7 +287,6 @@ export default function GameSheetPage({ org, roster }) {
     if (!game || points.length === 0) return
     let lastIdx
     if (liveMode) {
-      // In live mode, re-fetch the true latest point from DB to avoid undoing a stale index
       const { data } = await supabase
         .from('game_points').select('point_number')
         .eq('game_id', game.id).order('point_number', { ascending: false }).limit(1).maybeSingle()
@@ -416,7 +344,7 @@ export default function GameSheetPage({ org, roster }) {
       if (game?.id) localStorage.removeItem(`ucs_game_${game.id}`)
       setShowEndDialog(false); setGame(null); setSetup(null); setPoints([]); setLines({})
       setPlayerStatus({}); setHalftimeAfterPoint(null); setGameStartTime(''); setGameEndTime('')
-      fetchCompletedGames()
+      fetchAllGames()
     } finally { setSavingEnd(false) }
   }
 
@@ -441,9 +369,10 @@ export default function GameSheetPage({ org, roster }) {
     setGame(null); setSetup(null); setPoints([]); setLines({})
     setOurTO(0); setTheirTO(0); setPlayerStatus({})
     setHalftimeAfterPoint(null); setGameStartTime(''); setGameEndTime('')
+    fetchAllGames()
   }
 
-  // ── Reorder ───────────────────────────────────────────────────────────────
+  // ── Reorder ────────────────────────────────────────────────────────────────
   const enterReorder = () => {
     setPlayerOrder([...players])
     setReorderMode(true)
@@ -456,7 +385,6 @@ export default function GameSheetPage({ org, roster }) {
       const next   = [...group]
       const [moved] = next.splice(fromIdx, 1)
       next.splice(toIdx, 0, moved)
-      // Rebuild full list, replacing gender slots in-order
       const result = [...prev]
       let gi = 0
       result.forEach((p, i) => { if (p.gender === gender) result[i] = next[gi++] })
@@ -465,14 +393,13 @@ export default function GameSheetPage({ org, roster }) {
   }
 
   const saveOrder = () => {
-    // Update UI immediately, persist to DB in background
     setPlayers(playerOrder)
     setReorderMode(false)
-    const females = playerOrder.filter(p => p.gender === 'Female')
-    const males   = playerOrder.filter(p => p.gender === 'Male')
-    const toSave  = [
-      ...females.map((p, i) => ({ id: p.id, sort_order: i })),
-      ...males.map((p,   i) => ({ id: p.id, sort_order: i })),
+    const fems  = playerOrder.filter(p => p.gender === 'Female')
+    const mens  = playerOrder.filter(p => p.gender === 'Male')
+    const toSave = [
+      ...fems.map((p, i) => ({ id: p.id, sort_order: i })),
+      ...mens.map((p, i) => ({ id: p.id, sort_order: i })),
     ]
     Promise.all(
       toSave.map(({ id, sort_order }) =>
@@ -483,70 +410,7 @@ export default function GameSheetPage({ org, roster }) {
 
   const cancelReorder = () => setReorderMode(false)
 
-  // ── Live mode ─────────────────────────────────────────────────────────────
-  const refetchPoints = async (gameId) => {
-    const { data } = await supabase
-      .from('game_points').select('*')
-      .eq('game_id', gameId).order('point_number')
-    if (!data) return
-    setPoints(data.map(gp => ({
-      gender: gp.gender, scoredBy: gp.scored_by,
-      ourScoreAfter: gp.our_score_after, theirScoreAfter: gp.their_score_after,
-    })))
-  }
-
-  const unsubscribe = () => {
-    if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null }
-    clearTimeout(liveTimerRef.current); liveTimerRef.current = null
-    setLiveCoaches(0)
-  }
-
-  const disableLiveMode = async (gameId) => {
-    await supabase.from('games').update({ live_mode: false }).eq('id', gameId)
-    setLiveMode(false)
-    unsubscribe()
-  }
-
-  const subscribe = (gameId, expiresAt) => {
-    if (channelRef.current) return
-    const msLeft = new Date(expiresAt).getTime() - Date.now()
-    liveTimerRef.current = setTimeout(() => disableLiveMode(gameId), msLeft)
-
-    const ch = supabase.channel(`game-live:${gameId}`, {
-      config: { presence: { key: presenceKeyRef.current } }
-    })
-    ch
-      .on('presence', { event: 'sync' }, () => {
-        setLiveCoaches(Object.keys(ch.presenceState()).length)
-      })
-      .on('postgres_changes', {
-        event: '*', schema: 'public', table: 'game_points', filter: `game_id=eq.${gameId}`
-      }, () => refetchPoints(gameId))
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}`
-      }, ({ new: row }) => {
-        if (!row.live_mode) { setLiveMode(false); unsubscribe(); return }
-        setOurTO(row.our_timeouts_used || 0)
-        setTheirTO(row.their_timeouts_used || 0)
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await ch.track({ joined_at: new Date().toISOString() })
-        }
-      })
-    channelRef.current = ch
-  }
-
-  const checkLiveMode = (g) => {
-    if (!g.live_mode || !g.live_mode_expires_at) return
-    if (new Date(g.live_mode_expires_at) <= new Date()) {
-      supabase.from('games').update({ live_mode: false }).eq('id', g.id)
-      return
-    }
-    setLiveMode(true)
-    subscribe(g.id, g.live_mode_expires_at)
-  }
-
+  // ── Live mode toggle ───────────────────────────────────────────────────────
   const toggleLiveMode = async () => {
     if (!game) return
     if (liveMode) {
@@ -559,47 +423,86 @@ export default function GameSheetPage({ org, roster }) {
     }
   }
 
-  // ── No active game ────────────────────────────────────────────────────────
+  // ── Games list (landing page) ───────────────────────────────────────────────
   if (!setup) {
     return (
-      <div style={{ ...S.emptyState, justifyContent: 'flex-start', paddingTop: 32, overflowY: 'auto' }}>
+      <div style={S.gamesList}>
         {showSetup && <GameSetupDialog roster={roster} onStart={handleStartGame} onCancel={() => setShowSetup(false)} />}
-        <div style={{ fontSize: 48 }}>🥏</div>
-        <h2 style={S.emptyTitle}>No Active Game</h2>
-        <p style={S.emptySub}>{!roster ? 'Select a roster first.' : 'Start a new game to open the sheet.'}</p>
-        {roster && <button onClick={() => setShowSetup(true)} style={S.newGameBtn}>+ New Game</button>}
-        {completedGames.length > 0 && (
-          <div style={{ width: '100%', maxWidth: 480, marginTop: 28 }}>
-            <div style={S.pastHeader}>Past Games</div>
-            {completedGames.map(g => {
-              const d = new Date(g.created_at)
-              const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-              const won = g.our_score > g.their_score
-              const lost = g.our_score < g.their_score
-              return (
-                <div key={g.id} style={S.pastGameRowWrap}>
-                  <button onClick={() => loadCompletedGame(g)} style={S.pastGameBtn}>
-                    <div style={S.pastGameLeft}>
+
+        <div style={S.gamesListInner}>
+          {/* Header row */}
+          <div style={S.gamesListHeader}>
+            <span style={S.gamesListTitle}>Games</span>
+            {roster && (
+              <button onClick={() => setShowSetup(true)} style={S.newGameBtn}>+ New Game</button>
+            )}
+          </div>
+
+          {!roster && (
+            <p style={S.emptySub}>Select a roster first.</p>
+          )}
+
+          {/* Active Games */}
+          {activeGames.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={S.pastHeader}>In Progress</div>
+              {activeGames.map(g => {
+                const d = new Date(g.created_at)
+                const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                return (
+                  <button key={g.id} onClick={() => openActiveGame(g)} style={S.activeGameBtn}>
+                    <div style={S.activeGameLeft}>
+                      <span style={S.activeDot} />
                       <span style={S.pastOpponent}>vs {g.opponent}</span>
                       <span style={S.pastDate}>{dateStr}</span>
                     </div>
-                    <div style={{ ...S.pastScore, color: won ? '#00e5a0' : lost ? '#ff4d6d' : '#e8eaf0' }}>
-                      {g.our_score} – {g.their_score}
+                    <div style={{ ...S.pastScore, color: '#00e5a0' }}>
+                      {g.our_score ?? 0} – {g.their_score ?? 0}
                     </div>
                   </button>
-                  {pendingDelete === g.id ? (
-                    <div style={S.deleteConfirmRow}>
-                      <button onClick={() => setPendingDelete(null)} style={S.cancelDeleteBtn}>Cancel</button>
-                      <button onClick={() => handleDeleteGame(g.id)} style={S.confirmDeleteBtn}>Delete</button>
-                    </div>
-                  ) : (
-                    <button onClick={() => setPendingDelete(g.id)} style={S.pastDeleteBtn}>✕</button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
+                )
+              })}
+            </div>
+          )}
+
+          {/* Past Games */}
+          {completedGames.length > 0 && (
+            <div>
+              <div style={S.pastHeader}>Past Games</div>
+              {completedGames.map(g => {
+                const d = new Date(g.created_at)
+                const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                const won  = g.our_score > g.their_score
+                const lost = g.our_score < g.their_score
+                return (
+                  <div key={g.id} style={S.pastGameRowWrap}>
+                    <button onClick={() => loadCompletedGame(g)} style={S.pastGameBtn}>
+                      <div style={S.pastGameLeft}>
+                        <span style={S.pastOpponent}>vs {g.opponent}</span>
+                        <span style={S.pastDate}>{dateStr}</span>
+                      </div>
+                      <div style={{ ...S.pastScore, color: won ? '#00e5a0' : lost ? '#ff4d6d' : '#e8eaf0' }}>
+                        {g.our_score} – {g.their_score}
+                      </div>
+                    </button>
+                    {pendingDelete === g.id ? (
+                      <div style={S.deleteConfirmRow}>
+                        <button onClick={() => setPendingDelete(null)} style={S.cancelDeleteBtn}>Cancel</button>
+                        <button onClick={() => handleDeleteGame(g.id)} style={S.confirmDeleteBtn}>Delete</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setPendingDelete(g.id)} style={S.pastDeleteBtn}>✕</button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {roster && activeGames.length === 0 && completedGames.length === 0 && (
+            <p style={S.emptySub}>No games yet. Tap "+ New Game" to get started.</p>
+          )}
+        </div>
       </div>
     )
   }
@@ -730,6 +633,7 @@ export default function GameSheetPage({ org, roster }) {
         </div>
       ) : (
         <div style={S.actionBar}>
+          <button onClick={() => { setGame(null); setSetup(null); setPoints([]); setLines({}) }} style={S.btnBack}>‹</button>
           <button onClick={() => recordPoint('us')} style={S.btnUs}>▲ We Scored</button>
           <button onClick={() => recordPoint('them')} style={S.btnThem}>▲ They Scored</button>
           <button onClick={undoPoint} style={S.btnUndo} disabled={points.length === 0}>↩ Undo</button>
@@ -927,380 +831,7 @@ export default function GameSheetPage({ org, roster }) {
   )
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function SectionRow({ label, color, stickyName, colIndices, colBgFn, curIdx, secH, gt, htAfterPoint }) {
-  const sectionTint = `${color}14`
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', marginTop: 4 }}>
-      <div style={{ ...stickyName(sectionTint), height: secH, display: 'flex', alignItems: 'center',
-        paddingLeft: 6, fontSize: 9, fontWeight: 800, color, letterSpacing: 1,
-        textTransform: 'uppercase', fontFamily: "'Barlow Condensed', sans-serif",
-        borderTop: `2px solid ${color}88`, borderBottom: `1px solid ${color}44` }}>
-        {label}
-      </div>
-      {colIndices.map(i => (
-        <div key={i} style={{ width: COL_W, minWidth: COL_W, flexShrink: 0, height: secH,
-          background: `${colBgFn(i, curIdx) === 'transparent' ? sectionTint : colBgFn(i, curIdx)}`,
-          borderTop: `2px solid ${color}88`, borderBottom: `1px solid ${color}44`,
-          borderRight: htAfterPoint !== null && i === htAfterPoint ? '3px solid rgba(255,152,0,0.7)' : undefined }} />
-      ))}
-    </div>
-  )
-}
-
-function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCell, rowH, status, onStatusChange, onToggle, readOnly, gt, lightGrid }) {
-  const unavailable = !!status
-  const borderColor = status === 'injured' ? '#f0a500' : status === 'away' ? '#4a5068' : 'transparent'
-  const rowOpacity  = status === 'away' ? 0.28 : status === 'injured' ? 0.45 : 1
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', opacity: rowOpacity }}>
-      <div onClick={onStatusChange}
-        title={!status ? 'Tap to mark Away' : status === 'away' ? 'Tap to mark Injured' : 'Tap to mark Active'}
-        style={{ ...stickyName(gt.nameBg), height: rowH, display: 'flex', alignItems: 'center',
-          paddingLeft: 4, gap: 3, borderBottom: `1px solid ${gt.rowBorder}`,
-          borderLeft: `3px solid ${borderColor}`,
-          overflow: 'hidden', cursor: 'pointer', boxSizing: 'border-box' }}>
-        <span style={{ fontSize: 12, fontWeight: 700,
-          color: status === 'injured' ? gt.injColor : gt.nameColor,
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          maxWidth: status ? 46 : 54,
-          textDecoration: status === 'away' ? 'line-through' : 'none',
-          fontFamily: "'Barlow Condensed', sans-serif", textTransform: 'uppercase', letterSpacing: 0.3 }}>
-          {player.name}
-        </span>
-        {status ? (
-          <span style={{ fontSize: 8, fontWeight: 800, flexShrink: 0, padding: '1px 3px', borderRadius: 3,
-            fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5,
-            background: status === 'away' ? gt.awayBg : 'rgba(240,165,0,0.2)',
-            color: status === 'away' ? gt.awayColor : '#f0a500' }}>
-            {status === 'away' ? 'AWAY' : 'INJ'}
-          </span>
-        ) : player.position ? (
-          <span style={{ fontSize: 9, fontWeight: 700, background: gt.posTagBg, color: gt.posTagColor,
-            padding: '1px 3px', borderRadius: 3, flexShrink: 0,
-            fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5 }}>
-            {POS[player.position] || player.position}
-          </span>
-        ) : null}
-      </div>
-
-      {colIndices.map(i => {
-        const selected = lines[i]?.has(player.id) || false
-        const isInteractive = !readOnly && i >= curIdx && !unavailable
-        const dot = selected ? (
-          <div style={{
-            width: 16, height: 16, borderRadius: 3,
-            background: cellFill(true, i, curIdx, lightGrid),
-            border: i > curIdx ? `1px dashed ${lightGrid ? 'rgba(0,160,110,0.4)' : 'rgba(0,229,160,0.4)'}` : 'none',
-            pointerEvents: 'none',
-          }} />
-        ) : null
-
-        if (isInteractive) {
-          return (
-            <button key={i} onClick={() => onToggle(player.id, i)}
-              style={{ ...colCell(i), height: rowH,
-                borderBottom: `1px solid ${gt.rowBorder}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                padding: 0, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
-              {dot}
-            </button>
-          )
-        }
-        return (
-          <div key={i} style={{ ...colCell(i), height: rowH, borderBottom: `1px solid ${gt.rowBorder}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {dot}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function EmptySection({ label, stickyName, colIndices, colCell, rowH, gt }) {
-  return (
-    <div style={{ display: 'flex' }}>
-      <div style={{ ...stickyName(gt.nameBg), height: rowH, display: 'flex', alignItems: 'center',
-        paddingLeft: 6, fontSize: 10, color: gt.light ? '#a0a8c0' : '#3a3f52',
-        fontFamily: "'Barlow Condensed', sans-serif" }}>
-        {label}
-      </div>
-      {colIndices.map(i => <div key={i} style={{ ...colCell(i), height: rowH }} />)}
-    </div>
-  )
-}
-
-function ReorderGroup({ players, label, color, gender, onReorder }) {
-  const ROW_H = 44
-  const dragIdx   = useRef(null)  // index being dragged
-  const overIdx   = useRef(null)  // index currently hovered over
-  const startY    = useRef(0)
-  const [dragOver, setDragOver] = useState(null)  // index with drop indicator
-
-  // ── Touch handlers ────────────────────────────────────────────────────────
-  const onTouchStart = (e, idx) => {
-    dragIdx.current = idx
-    overIdx.current = idx
-    startY.current  = e.touches[0].clientY
-  }
-
-  const onTouchMove = (e) => {
-    if (dragIdx.current === null) return
-    e.preventDefault()
-    const y       = e.touches[0].clientY
-    const list    = e.currentTarget
-    const rect    = list.getBoundingClientRect()
-    const relY    = y - rect.top
-    const newIdx  = Math.max(0, Math.min(players.length - 1, Math.floor(relY / ROW_H)))
-    if (newIdx !== overIdx.current) {
-      overIdx.current = newIdx
-      setDragOver(newIdx)
-    }
-  }
-
-  const onTouchEnd = () => {
-    if (dragIdx.current !== null && overIdx.current !== null) {
-      onReorder(gender, dragIdx.current, overIdx.current)
-    }
-    dragIdx.current = null
-    overIdx.current = null
-    setDragOver(null)
-  }
-
-  // ── Mouse handlers (desktop) ──────────────────────────────────────────────
-  const onMouseDown = (e, idx) => {
-    dragIdx.current = idx
-    overIdx.current = idx
-  }
-
-  const onMouseEnterRow = (idx) => {
-    if (dragIdx.current === null) return
-    overIdx.current = idx
-    setDragOver(idx)
-  }
-
-  const onMouseUp = () => {
-    if (dragIdx.current !== null && overIdx.current !== null) {
-      onReorder(gender, dragIdx.current, overIdx.current)
-    }
-    dragIdx.current = null
-    overIdx.current = null
-    setDragOver(null)
-  }
-
-  return (
-    <div style={{ marginBottom: 8 }}>
-      {label && (
-        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 9, fontWeight: 800,
-          color, textTransform: 'uppercase', letterSpacing: 1.5,
-          padding: '6px 14px 4px', borderBottom: `1px solid ${color}44` }}>
-          {label}
-        </div>
-      )}
-      <div
-        data-reorder-list
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
-        style={{}}
-      >
-        {players.map((p, idx) => (
-          <div
-            key={p.id}
-            onMouseEnter={() => onMouseEnterRow(idx)}
-            style={{ display: 'flex', alignItems: 'center',
-              height: ROW_H, paddingRight: 8,
-              borderBottom: dragOver === idx && dragOver !== dragIdx.current
-                ? `2px solid ${color}`
-                : '1px solid #1a1e2a',
-              background: dragIdx.current === idx ? '#1a1e2a' : '#0f1117',
-              transition: 'background 0.1s',
-            }}>
-            {/* Drag handle */}
-            <div
-              onTouchStart={(e) => onTouchStart(e, idx)}
-              onMouseDown={(e) => onMouseDown(e, idx)}
-              style={{ padding: '0 12px', cursor: 'grab', color: '#2a2f42',
-                fontSize: 16, lineHeight: 1, userSelect: 'none', touchAction: 'none',
-                display: 'flex', alignItems: 'center', alignSelf: 'stretch' }}>
-              ⣿
-            </div>
-            <span style={{ flex: 1, fontFamily: "'Barlow Condensed', sans-serif",
-              fontSize: 14, fontWeight: 800, color: '#e8eaf0',
-              textTransform: 'uppercase', letterSpacing: 0.3, pointerEvents: 'none' }}>
-              {p.name}
-            </span>
-            {p.position && (
-              <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 9,
-                fontWeight: 700, background: '#1f2435', color: '#5a6280',
-                padding: '2px 4px', borderRadius: 3, letterSpacing: 0.5, pointerEvents: 'none' }}>
-                {POS[p.position] || p.position}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Game Info Modal ───────────────────────────────────────────────────────────
-
-function GameInfoModal({ setup, points, halftimeAfterPoint, onMarkHalftime, onClearHalftime,
-  startTime, endTime, onChangeStartTime, onChangeEndTime, onUpdateSetup, onAbandon, onClose }) {
-
-  const [timerSecs,      setTimerSecs]      = useState(0)
-  const [timerRunning,   setTimerRunning]   = useState(false)
-  const [abandonConfirm, setAbandonConfirm] = useState(false)
-  const timerRef = useRef(null)
-  const MAX_TIMER = 15 * 60
-
-  useEffect(() => {
-    if (timerRunning) {
-      timerRef.current = setInterval(() => {
-        setTimerSecs(prev => {
-          if (prev >= MAX_TIMER) { clearInterval(timerRef.current); setTimerRunning(false); return MAX_TIMER }
-          return prev + 1
-        })
-      }, 1000)
-    } else {
-      clearInterval(timerRef.current)
-    }
-    return () => clearInterval(timerRef.current)
-  }, [timerRunning])
-
-  const formatTime = (s) =>
-    `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`
-
-  const timerDone = timerSecs >= MAX_TIMER
-  const timerColor = timerDone ? '#ff4d6d' : timerRunning ? '#00e5a0' : '#e8eaf0'
-
-  return (
-    <div style={MS.overlay} onClick={onClose}>
-      <div style={MS.modal} onClick={e => e.stopPropagation()}>
-        <div style={MS.title}>GAME INFO</div>
-
-        {/* Times */}
-        <div style={MS.section}>
-          <div style={MS.fieldRow}>
-            <span style={MS.label}>Start Time</span>
-            <input value={startTime} onChange={e => onChangeStartTime(e.target.value)}
-              style={MS.input} placeholder="e.g. 10:00 AM" maxLength={20} />
-          </div>
-          <div style={MS.fieldRow}>
-            <span style={MS.label}>End Time</span>
-            <input value={endTime} onChange={e => onChangeEndTime(e.target.value)}
-              style={MS.input} placeholder="e.g. 12:00 PM" maxLength={20} />
-          </div>
-        </div>
-
-        {/* Setup toggles */}
-        <div style={MS.section}>
-          <div style={MS.fieldRow}>
-            <span style={MS.label}>Starting Side</span>
-            <div style={MS.toggleGroup}>
-              <button onClick={() => onUpdateSetup({ direction: 'left' })}
-                style={{ ...MS.toggleBtn, ...(setup.direction === 'left' ? MS.toggleActive : {}) }}>
-                ← Left
-              </button>
-              <button onClick={() => onUpdateSetup({ direction: 'right' })}
-                style={{ ...MS.toggleBtn, ...(setup.direction === 'right' ? MS.toggleActive : {}) }}>
-                → Right
-              </button>
-            </div>
-          </div>
-          <div style={MS.fieldRow}>
-            <span style={MS.label}>Starting</span>
-            <div style={MS.toggleGroup}>
-              <button onClick={() => onUpdateSetup({ startingAction: 'pull' })}
-                style={{ ...MS.toggleBtn, ...(setup.startingAction === 'pull' ? MS.toggleActive : {}) }}>
-                Pull
-              </button>
-              <button onClick={() => onUpdateSetup({ startingAction: 'receive' })}
-                style={{ ...MS.toggleBtn, ...(setup.startingAction === 'receive' ? MS.toggleActive : {}) }}>
-                Receive
-              </button>
-            </div>
-          </div>
-          <div style={MS.fieldRow}>
-            <span style={MS.label}>First Gender</span>
-            <div style={MS.toggleGroup}>
-              <button onClick={() => onUpdateSetup({ firstGender: 'm' })}
-                style={{ ...MS.toggleBtn, ...(setup.firstGender === 'm' ? MS.toggleActiveM : {}) }}>
-                Male
-              </button>
-              <button onClick={() => onUpdateSetup({ firstGender: 'f' })}
-                style={{ ...MS.toggleBtn, ...(setup.firstGender === 'f' ? MS.toggleActiveF : {}) }}>
-                Female
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Halftime */}
-        <div style={MS.section}>
-          <div style={MS.sectionTitle}>HALFTIME</div>
-          {halftimeAfterPoint !== null ? (
-            <div style={MS.htStatus}>
-              <span style={MS.htLabel}>Half after Pt {halftimeAfterPoint + 1}</span>
-              <button onClick={onClearHalftime} style={MS.clearBtn}>Clear</button>
-            </div>
-          ) : (
-            <button onClick={onMarkHalftime} disabled={points.length === 0}
-              style={{ ...MS.htBtn, opacity: points.length === 0 ? 0.4 : 1 }}>
-              Mark Halftime Now
-            </button>
-          )}
-        </div>
-
-        {/* Timer */}
-        <div style={MS.section}>
-          <div style={MS.sectionTitle}>BREAK TIMER</div>
-          <div style={{ ...MS.timerDisplay, color: timerColor }}>
-            {formatTime(timerSecs)}
-          </div>
-          {timerDone && <div style={MS.timerAlert}>TIME'S UP</div>}
-          <div style={MS.timerBtns}>
-            <button onClick={() => setTimerRunning(r => !r)} disabled={timerDone}
-              style={{ ...MS.timerBtn, background: timerRunning ? '#ff4d6d' : '#00e5a0', color: '#0f1117',
-                opacity: timerDone ? 0.4 : 1 }}>
-              {timerRunning ? 'Pause' : 'Start'}
-            </button>
-            <button onClick={() => { setTimerSecs(0); setTimerRunning(false) }}
-              style={{ ...MS.timerBtn, background: '#2a2f42', color: '#7a8099' }}>
-              Reset
-            </button>
-          </div>
-        </div>
-
-        {/* Abandon game */}
-        <div style={MS.section}>
-          {!abandonConfirm ? (
-            <button onClick={() => setAbandonConfirm(true)} style={MS.abandonBtn}>
-              Exit Without Saving
-            </button>
-          ) : (
-            <div style={MS.abandonConfirmBox}>
-              <div style={MS.abandonWarning}>Delete this game and all its points? This cannot be undone.</div>
-              <div style={MS.abandonBtns}>
-                <button onClick={() => setAbandonConfirm(false)} style={MS.abandonKeepBtn}>Keep Playing</button>
-                <button onClick={onAbandon} style={MS.abandonConfirmBtn}>Delete Game</button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <button onClick={onClose} style={MS.closeBtn}>Done</button>
-      </div>
-    </div>
-  )
-}
-
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ── Styles ─────────────────────────────────────────────────────────────────────
 const S = {
   emptyState: {
     flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -1310,16 +841,51 @@ const S = {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: '22px', fontWeight: '800',
     color: '#e8eaf0', textTransform: 'uppercase', letterSpacing: '1px', margin: 0
   },
-  emptySub:   { fontSize: '13px', textAlign: 'center', maxWidth: '280px', margin: 0 },
+  emptySub: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '13px', color: '#4a5068',
+    textAlign: 'center', maxWidth: '280px', margin: 0,
+  },
   newGameBtn: {
     background: '#00e5a0', color: '#0f1117', border: 'none',
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '14px', fontWeight: '800',
-    padding: '10px 24px', borderRadius: '8px', textTransform: 'uppercase', cursor: 'pointer'
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '13px', fontWeight: '800',
+    padding: '8px 18px', borderRadius: '8px', textTransform: 'uppercase', cursor: 'pointer', flexShrink: 0,
+  },
+
+  gamesList: {
+    flex: 1, overflowY: 'auto', background: '#0f1117', padding: '20px 16px',
+  },
+  gamesListInner: {
+    maxWidth: 480, margin: '0 auto',
+  },
+  gamesListHeader: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  gamesListTitle: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 900,
+    color: '#e8eaf0', textTransform: 'uppercase', letterSpacing: 1.5,
+  },
+  activeGameBtn: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    width: '100%', padding: '12px 14px', cursor: 'pointer', textAlign: 'left',
+    background: 'rgba(0,229,160,0.06)', border: '1px solid rgba(0,229,160,0.25)',
+    borderRadius: 8, marginBottom: 8, boxSizing: 'border-box',
+  },
+  activeGameLeft: {
+    display: 'flex', alignItems: 'center', gap: 8,
+  },
+  activeDot: {
+    width: 8, height: 8, borderRadius: '50%', background: '#00e5a0', flexShrink: 0,
+  },
+
+  btnBack: {
+    background: 'transparent', border: '1px solid #2a2f42', color: '#7a8099',
+    borderRadius: 7, fontFamily: "'Barlow Condensed', sans-serif", fontSize: 18,
+    fontWeight: 700, padding: '4px 10px', cursor: 'pointer', lineHeight: 1, flexShrink: 0,
   },
 
   container: { flex: 1, display: 'flex', flexDirection: 'column', background: '#0f1117', overflow: 'hidden' },
 
-  // Header — 3-column layout
   header: {
     display: 'flex', alignItems: 'center', gap: 8,
     background: '#181c26', borderBottom: '1px solid #2a2f42',
@@ -1341,7 +907,6 @@ const S = {
   toAvailOpp: { background: '#ff4d6d' },
   toUsed:     { background: '#2a2f42', cursor: 'default' },
 
-  // Center info
   headerCenter: {
     flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
   },
@@ -1372,7 +937,6 @@ const S = {
     color: over ? '#ff4d6d' : ok ? '#00e5a0' : '#7a8099'
   }),
 
-  // Action bar
   actionBar: {
     display: 'flex', gap: 6, padding: '6px 10px',
     background: '#181c26', borderBottom: '1px solid #2a2f42', flexShrink: 0
@@ -1424,7 +988,6 @@ const S = {
     width: 6, height: 6, borderRadius: '50%', background: '#00e5a0', flexShrink: 0,
   },
 
-  // Reorder panel
   reorderPanel: {
     flex: 1, overflowY: 'auto', minHeight: 0, background: '#0f1117',
   },
@@ -1457,7 +1020,6 @@ const S = {
   gridWrap: { flex: 1, overflowX: 'auto', overflowY: 'auto', minHeight: 0 },
   row: { display: 'flex', alignItems: 'stretch' },
 
-  // Past games
   pastHeader: {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, fontWeight: 800,
     color: '#4a5068', textTransform: 'uppercase', letterSpacing: 1, padding: '0 4px 10px',
@@ -1493,121 +1055,6 @@ const S = {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 15, fontWeight: 800,
     color: '#e8eaf0', textTransform: 'uppercase', letterSpacing: 0.5,
   },
-  pastDate: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, color: '#4a5068', letterSpacing: 0.5 },
+  pastDate:  { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, color: '#4a5068', letterSpacing: 0.5 },
   pastScore: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 900, lineHeight: 1 },
-}
-
-// Modal styles
-const MS = {
-  overlay: {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    zIndex: 100, padding: 16,
-  },
-  modal: {
-    background: '#181c26', border: '1px solid #2a2f42', borderRadius: 16,
-    padding: '20px 20px 16px', width: '100%', maxWidth: 380,
-    display: 'flex', flexDirection: 'column', gap: 0,
-    maxHeight: '90vh', overflowY: 'auto',
-  },
-  title: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 900,
-    color: '#e8eaf0', textTransform: 'uppercase', letterSpacing: 2,
-    marginBottom: 16, textAlign: 'center',
-  },
-  section: {
-    borderTop: '1px solid #2a2f42', paddingTop: 14, paddingBottom: 14,
-    display: 'flex', flexDirection: 'column', gap: 10,
-  },
-  sectionTitle: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 10, fontWeight: 800,
-    color: '#4a5068', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 2,
-  },
-  fieldRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  label: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 700,
-    color: '#7a8099', textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0,
-  },
-  input: {
-    background: '#0f1117', border: '1px solid #2a2f42', borderRadius: 6,
-    color: '#e8eaf0', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13,
-    fontWeight: 600, padding: '6px 10px', width: 130, outline: 'none',
-  },
-  toggleGroup: { display: 'flex', gap: 4 },
-  toggleBtn: {
-    background: '#0f1117', border: '1px solid #2a2f42', borderRadius: 6,
-    color: '#7a8099', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11,
-    fontWeight: 700, padding: '5px 10px', cursor: 'pointer', textTransform: 'uppercase',
-  },
-  toggleActive:  { background: 'rgba(0,229,160,0.15)', border: '1px solid #00e5a0', color: '#00e5a0' },
-  toggleActiveM: { background: 'rgba(77,159,255,0.15)', border: '1px solid #4d9fff', color: '#4d9fff' },
-  toggleActiveF: { background: 'rgba(255,128,200,0.15)', border: '1px solid #ff80c8', color: '#ff80c8' },
-
-  // Halftime
-  htStatus: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  htLabel: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 700, color: 'rgba(255,152,0,0.9)',
-  },
-  clearBtn: {
-    background: 'transparent', border: '1px solid #2a2f42', borderRadius: 6,
-    color: '#7a8099', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11,
-    fontWeight: 700, padding: '4px 10px', cursor: 'pointer', textTransform: 'uppercase',
-  },
-  htBtn: {
-    background: 'rgba(255,152,0,0.12)', border: '1px solid rgba(255,152,0,0.5)',
-    borderRadius: 8, color: 'rgba(255,152,0,1)',
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 800,
-    padding: '10px 0', textTransform: 'uppercase', letterSpacing: 0.5,
-    cursor: 'pointer', width: '100%',
-  },
-
-  // Timer
-  timerDisplay: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 52, fontWeight: 900,
-    letterSpacing: 2, textAlign: 'center', lineHeight: 1, padding: '8px 0',
-  },
-  timerAlert: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 800,
-    color: '#ff4d6d', textTransform: 'uppercase', letterSpacing: 2, textAlign: 'center',
-    marginBottom: 4,
-  },
-  timerBtns: { display: 'flex', gap: 8 },
-  timerBtn: {
-    flex: 1, border: 'none', borderRadius: 8,
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14, fontWeight: 800,
-    padding: '10px 0', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer',
-  },
-
-  // Abandon game
-  abandonBtn: {
-    background: 'rgba(255,77,109,0.08)', border: '1px solid rgba(255,77,109,0.35)',
-    borderRadius: 8, color: '#ff4d6d',
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 800,
-    padding: '10px 0', textTransform: 'uppercase', letterSpacing: 0.5,
-    cursor: 'pointer', width: '100%',
-  },
-  abandonConfirmBox: { display: 'flex', flexDirection: 'column', gap: 10 },
-  abandonWarning: {
-    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 700,
-    color: '#e8eaf0', textAlign: 'center', lineHeight: 1.4,
-  },
-  abandonBtns: { display: 'flex', gap: 8 },
-  abandonKeepBtn: {
-    flex: 1, background: 'transparent', border: '1px solid #2a2f42', borderRadius: 8,
-    color: '#7a8099', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12,
-    fontWeight: 800, padding: '9px 0', textTransform: 'uppercase', cursor: 'pointer',
-  },
-  abandonConfirmBtn: {
-    flex: 1, background: 'rgba(255,77,109,0.15)', border: '1px solid #ff4d6d', borderRadius: 8,
-    color: '#ff4d6d', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12,
-    fontWeight: 800, padding: '9px 0', textTransform: 'uppercase', cursor: 'pointer',
-  },
-
-  // Close
-  closeBtn: {
-    marginTop: 12, background: '#0f1117', border: '1px solid #2a2f42', borderRadius: 10,
-    color: '#7a8099', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14,
-    fontWeight: 800, padding: '12px 0', textTransform: 'uppercase', cursor: 'pointer',
-    width: '100%',
-  },
 }
