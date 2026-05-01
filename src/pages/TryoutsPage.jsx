@@ -4,7 +4,7 @@ import { offlineStore } from '../lib/offlineStore'
 import TryoutSessionPage from './TryoutSessionPage'
 import ConfirmDialog from '../Components/ConfirmDialog'
 
-function TryoutsPage({ org, session }) {
+function TryoutsPage({ org, session, isDemoOrg }) {
   const [tryouts, setTryouts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -49,6 +49,7 @@ function TryoutsPage({ org, session }) {
 
   const handleCreate = async (e) => {
     e.preventDefault()
+    if (isDemoOrg) return
     setSaving(true)
     try {
       const { error } = await supabase.from('tryouts').insert({
@@ -73,6 +74,7 @@ function TryoutsPage({ org, session }) {
   }
 
   const handleDelete = async () => {
+    if (isDemoOrg) return
     await supabase.from('tryout_players').delete().eq('tryout_id', deletingTryout.id)
     const { error } = await supabase.from('tryouts').delete().eq('id', deletingTryout.id)
     setDeletingTryout(null)

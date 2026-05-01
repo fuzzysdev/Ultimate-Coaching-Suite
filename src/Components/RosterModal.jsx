@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 
-function RosterModal({ roster, onSave, onClose }) {
+function RosterModal({ roster, onSave, onClose, isDemoOrg }) {
   const [name, setName] = useState('')
   const [ageGroup, setAgeGroup] = useState('junior')
   const [genderType, setGenderType] = useState('mixed')
@@ -17,6 +17,7 @@ function RosterModal({ roster, onSave, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!name.trim()) return
+    if (isDemoOrg) return
     setSaving(true)
     await onSave(name.trim(), ageGroup, genderType)
     setSaving(false)

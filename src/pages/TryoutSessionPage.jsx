@@ -6,7 +6,7 @@ import ConfirmDialog from '../Components/ConfirmDialog'
 const GRADES = ['6th', '7th', '8th', '9th', '10th', '11th', '12th', 'College', 'Adult']
 const GENDERS = ['Female', 'Male']
 
-function TryoutSessionPage({ tryout, org, session, onBack }) {
+function TryoutSessionPage({ tryout, org, session, onBack, isDemoOrg }) {
   const [players, setPlayers] = useState([])
   const [rankings, setRankings] = useState(tryout.rankings || { M: [], F: [] })
   const [cutIndex, setCutIndex] = useState(tryout.cut_index || { M: 3, F: 3 })
@@ -132,6 +132,7 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
   }
 
   const saveToDb = async (newRankings, newCut, newBubble) => {
+    if (isDemoOrg) return
     const queueKey = `tryout_rankings_${tryout.id}`
     const payload = { rankings: newRankings, cut_index: newCut, bubble_index: newBubble }
 
@@ -171,6 +172,7 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
   const handleAddPlayer = async (e) => {
     e.preventDefault()
     if (!newName.trim()) return
+    if (isDemoOrg) return
     setSaving(true)
     try {
       const { data, error } = await supabase
@@ -197,6 +199,7 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
 
   // ── REMOVE PLAYER ──
   const handleRemovePlayer = async () => {
+    if (isDemoOrg) return
     const id = removingPlayer.id
     setRemovingPlayer(null)
     await supabase.from('tryout_players').delete().eq('id', id)
@@ -217,6 +220,7 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
 
   const handleSaveEdit = async () => {
     if (!editName.trim()) return
+    if (isDemoOrg) return
     const oldGender = editingPlayer.gender
     const { error } = await supabase
       .from('tryout_players')
@@ -247,6 +251,7 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
   }
 
   const handleSaveNotes = async () => {
+    if (isDemoOrg) return
     await supabase.from('tryout_players').update({ notes: notesText }).eq('id', notesPlayerId)
     setNotes(prev => ({ ...prev, [notesPlayerId]: notesText }))
     setNotesPlayerId(null)
@@ -344,6 +349,7 @@ function TryoutSessionPage({ tryout, org, session, onBack }) {
   // ── PROMOTE ──
   const handlePromote = async () => {
     if (!selectedRoster) return
+    if (isDemoOrg) return
     setPromoting(true)
     try {
       const p = promotingPlayer

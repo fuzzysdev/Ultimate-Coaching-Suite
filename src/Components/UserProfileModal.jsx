@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import InviteModal from './InviteModal'
 import CreateOrgModal from './CreateOrgModal'
+import SubscriptionTab from './SubscriptionTab'
 
-function UserProfileModal({ session, selectedOrg, onClose, onRostersRefresh, onSignOut, onOrgChanged, onSelectOrg }) {
+function UserProfileModal({ session, selectedOrg, accessStatus, onClose, onRostersRefresh, onSignOut, onOrgChanged, onSelectOrg }) {
   const [activeTab,       setActiveTab]       = useState('profile')
   const [orgMemberships,  setOrgMemberships]  = useState([])
   const [loadingOrgs,     setLoadingOrgs]     = useState(true)
@@ -131,6 +132,10 @@ function UserProfileModal({ session, selectedOrg, onClose, onRostersRefresh, onS
             style={{ ...s.tab, ...(activeTab === 'orgs' ? s.tabActive : {}) }}>
             Organizations
           </button>
+          <button onClick={() => setActiveTab('subscription')}
+            style={{ ...s.tab, ...(activeTab === 'subscription' ? s.tabActive : {}) }}>
+            Subscription
+          </button>
         </div>
 
         {/* ── PROFILE TAB ── */}
@@ -236,6 +241,13 @@ function UserProfileModal({ session, selectedOrg, onClose, onRostersRefresh, onS
             </div>
 
           </>
+        )}
+
+        {/* ── SUBSCRIPTION TAB ── */}
+        {activeTab === 'subscription' && (
+          <div style={s.section}>
+            <SubscriptionTab session={session} accessStatus={accessStatus} />
+          </div>
         )}
 
       </div>

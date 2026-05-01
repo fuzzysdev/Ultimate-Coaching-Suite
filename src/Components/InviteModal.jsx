@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-function InviteModal({ org, userId, onJoined, onClose }) {
+function InviteModal({ org, userId, onJoined, onClose, isDemoOrg }) {
   const [tab, setTab] = useState(org ? 'generate' : 'join')
   const [generatedCode, setGeneratedCode] = useState(null)
   const [generating, setGenerating] = useState(false)
@@ -18,6 +18,7 @@ function InviteModal({ org, userId, onJoined, onClose }) {
   }
 
   const handleGenerate = async () => {
+    if (isDemoOrg) return
     setError(null)
     setGenerating(true)
     try {
@@ -48,6 +49,7 @@ function InviteModal({ org, userId, onJoined, onClose }) {
 
   const handleJoin = async (e) => {
     e.preventDefault()
+    if (isDemoOrg) return
     setError(null)
     setJoining(true)
 

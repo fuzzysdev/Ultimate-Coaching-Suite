@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
+const EXEMPT_REASONS = ['developer', 'master_admin', 'beta_tester', 'partner']
+
 const makeCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   const bytes = new Uint8Array(16)
@@ -27,7 +29,18 @@ function SuperAdminPage({ session }) {
   const [copiedCode, setCopiedCode] = useState(null)
   const [error, setError] = useState(null)
 
+  // ── Master Licenses state ──
+  const [exemptAccounts, setExemptAccounts] = useState([])
+  const [loadingExempt,  setLoadingExempt]  = useState(false)
+  const [exemptEmail,    setExemptEmail]    = useState('')
+  const [exemptReason,   setExemptReason]   = useState('developer')
+  const [addingExempt,   setAddingExempt]   = useState(false)
+  const [removingExempt, setRemovingExempt] = useState(null)
+  const [exemptError,    setExemptError]    = useState(null)
+  const [activeSection,  setActiveSection]  = useState('orgs') // 'orgs' | 'licenses'
+
   useEffect(() => { checkAccess() }, [])
+  useEffect(() => { if (isAdmin && activeSection === 'licenses') fetchExemptAccounts() }, [isAdmin, activeSection])
 
   const checkAccess = async () => {
     const { data, error } = await supabase
@@ -159,6 +172,54 @@ function SuperAdminPage({ session }) {
     setGeneratedCodes(prev => { const n = { ...prev }; delete n[orgId]; return n })
   }
 
+  // ── Master Licenses handlers ──
+  const fetchExemptAccounts = async () => {
+    setLoadingExempt(true)
+    const { data, error } = await supabase
+      .from('exempt_accounts')
+      .select('user_id, email, reason, created_at')
+      .order('created_at', { ascending: false })
+    if (error) setExemptError(error.message)
+    setExemptAccounts(data || [])
+    setLoadingExempt(false)
+  }
+
+  const handleAddExempt = async (e) => {
+    e.preventDefault()
+    if (!exemptEmail.trim()) return
+    setAddingExempt(true)
+    setExemptError(null)
+    try {
+      // Resolve email → user_id via SECURITY DEFINER RPC
+      const { data: userId, error: resolveError } = await supabase.rpc('get_user_by_email', { p_email: exemptEmail.trim().toLowerCase() })
+      if (resolveError || !userId) throw new Error('No account found with that email address.')
+
+      const { error: insertError } = await supabase.from('exempt_accounts').upsert({
+        user_id: userId,
+        email: exemptEmail.trim().toLowerCase(),
+        reason: exemptReason,
+        granted_by: session.user.id,
+      }, { onConflict: 'user_id' })
+      if (insertError) throw insertError
+
+      setExemptEmail('')
+      await fetchExemptAccounts()
+    } catch (err) {
+      setExemptError(err.message)
+    } finally {
+      setAddingExempt(false)
+    }
+  }
+
+  const handleRemoveExempt = async (userId) => {
+    setRemovingExempt(userId)
+    setExemptError(null)
+    const { error } = await supabase.from('exempt_accounts').delete().eq('user_id', userId)
+    if (error) setExemptError(error.message)
+    else setExemptAccounts(prev => prev.filter(a => a.user_id !== userId))
+    setRemovingExempt(null)
+  }
+
   const s = styles
 
   // ── Checking access ──
@@ -210,6 +271,21 @@ function SuperAdminPage({ session }) {
           </div>
         )}
 
+        {/* Section tabs */}
+        <div style={s.tabBar}>
+          <button onClick={() => setActiveSection('orgs')}
+            style={{ ...s.tabBtn, ...(activeSection === 'orgs' ? s.tabActive : {}) }}>
+            Organizations <span style={s.tabCount}>{orgs.length}</span>
+          </button>
+          <button onClick={() => setActiveSection('licenses')}
+            style={{ ...s.tabBtn, ...(activeSection === 'licenses' ? s.tabActive : {}) }}>
+            Master Licenses <span style={s.tabCount}>{exemptAccounts.length}</span>
+          </button>
+        </div>
+
+        {/* ── ORGANIZATIONS SECTION ── */}
+        {activeSection === 'orgs' && <>
+
         {/* Section header */}
         <div style={s.sectionHeader}>
           <h2 style={s.sectionTitle}>
@@ -249,6 +325,7 @@ function SuperAdminPage({ session }) {
           <div style={s.orgList}>
             {orgs.map(org => (
               <div key={org.id} style={s.orgCard}>
+
 
                 {/* ── Org row ── */}
                 <div style={s.orgRow}>
@@ -381,6 +458,89 @@ function SuperAdminPage({ session }) {
                 )}
               </div>
             ))}
+          </div>
+        )}
+        </> /* end activeSection === 'orgs' */}
+
+        {/* ── MASTER LICENSES SECTION ── */}
+        {activeSection === 'licenses' && (
+          <div>
+            <div style={s.sectionHeader}>
+              <h2 style={s.sectionTitle}>
+                Master Licenses
+                <span style={s.sectionCount}>{exemptAccounts.length}</span>
+              </h2>
+            </div>
+
+            {exemptError && (
+              <div style={s.errorBanner} onClick={() => setExemptError(null)}>
+                {exemptError} <span style={{ opacity: 0.6, marginLeft: 8 }}>✕</span>
+              </div>
+            )}
+
+            {/* Add license form */}
+            <form onSubmit={handleAddExempt} style={s.createForm}>
+              <input
+                type="email"
+                value={exemptEmail}
+                onChange={e => setExemptEmail(e.target.value)}
+                placeholder="coach@example.com"
+                required
+                style={s.input}
+              />
+              <select
+                value={exemptReason}
+                onChange={e => setExemptReason(e.target.value)}
+                style={{ ...s.input, flex: 'none', width: 140 }}
+              >
+                {EXEMPT_REASONS.map(r => (
+                  <option key={r} value={r}>{r.replace('_', ' ')}</option>
+                ))}
+              </select>
+              <button type="submit" disabled={addingExempt} style={s.saveBtn}>
+                {addingExempt ? '…' : 'Grant'}
+              </button>
+            </form>
+
+            {/* License list */}
+            {loadingExempt ? (
+              <p style={s.muted}>Loading...</p>
+            ) : exemptAccounts.length === 0 ? (
+              <p style={s.muted}>No permanent licenses granted yet.</p>
+            ) : (
+              <table style={s.table}>
+                <thead>
+                  <tr>
+                    <th style={s.th}>Email</th>
+                    <th style={s.th}>Reason</th>
+                    <th style={s.th}>Granted</th>
+                    <th style={s.th}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {exemptAccounts.map((a, i) => (
+                    <tr key={a.user_id} style={{ background: i % 2 === 0 ? '#181c26' : '#1c2030' }}>
+                      <td style={s.td}>{a.email}</td>
+                      <td style={s.td}>
+                        <span style={{ ...s.roleBadge, background: 'rgba(167,139,250,0.1)', color: '#a78bfa', borderColor: 'rgba(167,139,250,0.3)' }}>
+                          {a.reason.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td style={s.td}>{new Date(a.created_at).toLocaleDateString()}</td>
+                      <td style={{ ...s.td, textAlign: 'right' }}>
+                        <button
+                          onClick={() => handleRemoveExempt(a.user_id)}
+                          disabled={removingExempt === a.user_id}
+                          style={s.removeBtn}
+                        >
+                          {removingExempt === a.user_id ? '…' : 'Revoke'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
       </div>
@@ -598,7 +758,21 @@ const styles = {
     fontWeight: '700', padding: '4px 10px', borderRadius: '5px', cursor: 'pointer',
     textTransform: 'uppercase'
   },
-  muted: { color: '#7a8099', fontSize: '0.9rem' }
+  muted: { color: '#7a8099', fontSize: '0.9rem' },
+  // tab navigation
+  tabBar: { display: 'flex', gap: 6, marginBottom: '1.5rem' },
+  tabBtn: {
+    background: 'none', border: '1px solid #2a2f42', color: '#7a8099',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '13px', fontWeight: '700',
+    padding: '8px 18px', borderRadius: '7px', cursor: 'pointer',
+    textTransform: 'uppercase', letterSpacing: '0.5px',
+    display: 'flex', alignItems: 'center', gap: 8,
+  },
+  tabActive: { background: 'rgba(0,229,160,0.1)', borderColor: '#00e5a0', color: '#00e5a0' },
+  tabCount: {
+    background: '#1f2435', border: '1px solid #2a2f42', color: '#7a8099',
+    fontSize: '11px', fontWeight: '700', padding: '1px 7px', borderRadius: '12px',
+  },
 }
 
 export default SuperAdminPage

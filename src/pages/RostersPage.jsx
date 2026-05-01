@@ -4,7 +4,7 @@ import RosterModal from '../Components/RosterModal'
 import ConfirmDialog from '../Components/ConfirmDialog'
 import RosterPage from './RosterPage'
 
-function RostersPage({ org, session, onRostersChanged }) {
+function RostersPage({ org, session, onRostersChanged, isDemoOrg }) {
   const [rosters, setRosters] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -34,6 +34,7 @@ function RostersPage({ org, session, onRostersChanged }) {
   }
 
   const handleCreateRoster = async (name, ageGroup, genderType) => {
+    if (isDemoOrg) return
     const { error } = await supabase.from('rosters').insert({
       name, organization_id: org.id, created_by: session.user.id,
       age_group: ageGroup, gender_type: genderType
@@ -45,6 +46,7 @@ function RostersPage({ org, session, onRostersChanged }) {
   }
 
   const handleEditRoster = async (name, ageGroup, genderType) => {
+    if (isDemoOrg) return
     const { error } = await supabase.from('rosters')
       .update({ name, age_group: ageGroup, gender_type: genderType })
       .eq('id', editingRoster.id)
@@ -55,6 +57,7 @@ function RostersPage({ org, session, onRostersChanged }) {
   }
 
   const handleDeleteRoster = async () => {
+    if (isDemoOrg) return
     const { error } = await supabase.from('rosters').delete().eq('id', deletingRoster.id)
     if (error) throw error
     setDeletingRoster(null)

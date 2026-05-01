@@ -12,7 +12,7 @@ import {
   colBg, buildTheme,
 } from '../lib/gameSheetHelpers'
 
-export default function GameSheetPage({ org, roster }) {
+export default function GameSheetPage({ org, roster, isDemoOrg }) {
   const [players,            setPlayers]            = useState([])
   const [loadingPlayers,     setLoadingPlayers]     = useState(true)
   const [game,               setGame]               = useState(null)
@@ -45,9 +45,9 @@ export default function GameSheetPage({ org, roster }) {
     setLiveMode, setLiveCoaches, setOurTO, setTheirTO, setPoints,
   })
 
-  // Persist working state to localStorage
+  // Persist working state to localStorage (skip for demo games)
   useEffect(() => {
-    if (!game?.id) return
+    if (!game?.id || game.id === 'demo-game') return
     const linesSerial = {}
     Object.entries(lines).forEach(([k, s]) => { linesSerial[k] = [...s] })
     localStorage.setItem(`ucs_game_${game.id}`, JSON.stringify({
@@ -271,6 +271,7 @@ export default function GameSheetPage({ org, roster }) {
     setPoints(prev => [...prev, { gender: pointGender, scoredBy, ourScoreAfter: newOur, theirScoreAfter: newTheir }])
     setPendingPoint(null)
     scrollToCurrent()
+    if (isDemoOrg) return
     supabase.from('game_points').insert({
       game_id: game.id, point_number: pointNum, gender: pointGender,
       scored_by: scoredBy, player_ids: lineSnapshot,
@@ -285,6 +286,7 @@ export default function GameSheetPage({ org, roster }) {
 
   const undoPoint = async () => {
     if (!game || points.length === 0) return
+    if (isDemoOrg) { setPoints(prev => prev.slice(0, -1)); return }
     let lastIdx
     if (liveMode) {
       const { data } = await supabase
@@ -313,12 +315,23 @@ export default function GameSheetPage({ org, roster }) {
     const nOur  = team === 'us'   ? ourTO + 1   : ourTO
     const nThem = team === 'them' ? theirTO + 1 : theirTO
     setOurTO(nOur); setTheirTO(nThem)
+    if (isDemoOrg) return
     supabase.from('games').update({ our_timeouts_used: nOur, their_timeouts_used: nThem })
       .eq('id', game.id)
       .then(({ error }) => { if (error) console.error('timeout update:', error) })
   }
 
   const handleStartGame = async (setupData) => {
+    if (isDemoOrg) {
+      // In demo mode, create a fake in-memory game without touching the DB
+      setGame({ id: 'demo-game', opponent: setupData.opponent, our_score: 0, their_score: 0 })
+      setSetup(setupData); setPoints([]); setLines({})
+      setOurTO(0); setTheirTO(0); setPlayerStatus({})
+      setHalftimeAfterPoint(null); setShowSetup(false)
+      setGameStartTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+      setGameEndTime('')
+      return
+    }
     const { data, error } = await supabase.from('games').insert({
       organization_id: org.id, roster_id: roster.id,
       opponent: setupData.opponent, first_gender: setupData.firstGender,
@@ -335,6 +348,11 @@ export default function GameSheetPage({ org, roster }) {
 
   const handleSaveEnd = async (ratings) => {
     if (!game) return
+    if (isDemoOrg) {
+      setShowEndDialog(false); setGame(null); setSetup(null); setPoints([]); setLines({})
+      setPlayerStatus({}); setHalftimeAfterPoint(null); setGameStartTime(''); setGameEndTime('')
+      return
+    }
     setSavingEnd(true)
     try {
       await supabase.from('spirit_ratings').insert({ game_id: game.id, ...ratings })
@@ -349,6 +367,7 @@ export default function GameSheetPage({ org, roster }) {
   }
 
   const handleDeleteGame = async (gameId) => {
+    if (isDemoOrg) { setPendingDelete(null); return }
     await supabase.from('game_points').delete().eq('game_id', gameId)
     await supabase.from('spirit_ratings').delete().eq('game_id', gameId)
     await supabase.from('games').delete().eq('id', gameId)
@@ -359,6 +378,13 @@ export default function GameSheetPage({ org, roster }) {
 
   const handleAbandonGame = async () => {
     if (!game) return
+    if (isDemoOrg) {
+      setShowGameInfo(false)
+      setGame(null); setSetup(null); setPoints([]); setLines({})
+      setOurTO(0); setTheirTO(0); setPlayerStatus({})
+      setHalftimeAfterPoint(null); setGameStartTime(''); setGameEndTime('')
+      return
+    }
     await supabase.from('game_points').delete().eq('game_id', game.id)
     await supabase.from('spirit_ratings').delete().eq('game_id', game.id)
     await supabase.from('games').delete().eq('id', game.id)
@@ -395,6 +421,7 @@ export default function GameSheetPage({ org, roster }) {
   const saveOrder = () => {
     setPlayers(playerOrder)
     setReorderMode(false)
+    if (isDemoOrg) return
     const fems  = playerOrder.filter(p => p.gender === 'Female')
     const mens  = playerOrder.filter(p => p.gender === 'Male')
     const toSave = [
@@ -413,6 +440,7 @@ export default function GameSheetPage({ org, roster }) {
   // ── Live mode toggle ───────────────────────────────────────────────────────
   const toggleLiveMode = async () => {
     if (!game) return
+    if (isDemoOrg) return
     if (liveMode) {
       await disableLiveMode(game.id)
     } else {

@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase";
 import { offlineStore } from "../lib/offlineStore";
 
 // States: 0 = absent, 1 = present, 2 = excused
-export default function AttendancePage({ org, roster }) {
+export default function AttendancePage({ org, roster, isDemoOrg }) {
   const [players, setPlayers] = useState([]);
   const [practices, setPractices] = useState([]);
   const [att, setAtt] = useState({});          // att[playerId][label] = 0|1|2
@@ -31,6 +31,7 @@ export default function AttendancePage({ org, roster }) {
       const p = practicesRef.current;
       const a = attRef.current;
       if (!r?.id || !o?.id) return;
+      if (isDemoOrg) return;
       const payload = { roster_id: r.id, organization_id: o.id, practices: p, records: a, updated_at: new Date().toISOString() };
       offlineStore.setCache(`attendance_${r.id}`, { practices: p, records: a, savedAt: Date.now() });
       if (navigator.onLine) {
@@ -140,6 +141,7 @@ export default function AttendancePage({ org, roster }) {
 
   async function saveToDb(currentPractices, currentAtt) {
     if (!roster?.id || !org?.id) return;
+    if (isDemoOrg) return;
     const cacheKey = `attendance_${roster.id}`;
     const queueKey = `attendance_${roster.id}`;
     const payload = {

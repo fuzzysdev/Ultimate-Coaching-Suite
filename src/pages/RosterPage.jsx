@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import PlayerModal from '../Components/PlayerModal'
 import ConfirmDialog from '../Components/ConfirmDialog'
 
-function RosterPage({ roster, onBack }) {
+function RosterPage({ roster, onBack, isDemoOrg }) {
   const [players, setPlayers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -30,6 +30,7 @@ function RosterPage({ roster, onBack }) {
   }
 
   const handleAddPlayer = async (playerData) => {
+    if (isDemoOrg) return
     const { error } = await supabase.from('players').insert({
       name: playerData.name,
       grade: playerData.grade,
@@ -43,6 +44,7 @@ function RosterPage({ roster, onBack }) {
   }
 
   const handleEditPlayer = async (playerData) => {
+    if (isDemoOrg) return
     const { error } = await supabase.from('players').update({
       name: playerData.name,
       grade: playerData.grade,
@@ -55,6 +57,7 @@ function RosterPage({ roster, onBack }) {
   }
 
   const handleDeletePlayer = async () => {
+    if (isDemoOrg) return
     const { error } = await supabase.from('players').delete().eq('id', deletingPlayer.id)
     if (error) throw error
     setDeletingPlayer(null)

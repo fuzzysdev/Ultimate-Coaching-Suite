@@ -2,12 +2,15 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import UserProfileModal from '../Components/UserProfileModal'
+import SubscriptionBanner from '../Components/SubscriptionBanner'
 import RostersPage from './RostersPage'
 import TryoutsPage from './TryoutsPage'
 import GameSheetPage from './GameSheetPage'
 import AttendancePage from './Attendance'
 import StatsPage from './StatsPage'
 import PlaceholderPage from './PlaceholderPage'
+
+const DEMO_ORG_ID = import.meta.env.VITE_DEMO_ORG_ID || null
 
 
 const NAV_ITEMS = [
@@ -19,7 +22,7 @@ const NAV_ITEMS = [
   { key: 'tournaments', label: 'Tournaments' },
 ]
 
-function MainShell({ session }) {
+function MainShell({ session, accessStatus }) {
   const [organizations,  setOrganizations]  = useState([])
   const [selectedOrg,    setSelectedOrg]    = useState(null)
   const [rosters,        setRosters]        = useState([])
@@ -29,6 +32,8 @@ function MainShell({ session }) {
   const [toast,          setToast]          = useState(null)
   const [loadingOrgs,    setLoadingOrgs]    = useState(true)
   const isOnline = useOnlineStatus()
+
+  const isDemoOrg = DEMO_ORG_ID && selectedOrg?.id === DEMO_ORG_ID
 
   useEffect(() => { fetchOrganizations() }, [])
   useEffect(() => { if (selectedOrg) fetchRosters(selectedOrg.id) }, [selectedOrg])
@@ -134,15 +139,15 @@ function MainShell({ session }) {
     }
     switch (currentApp) {
       case 'rosters':
-        return <RostersPage org={selectedOrg} session={session} onRostersChanged={() => fetchRosters(selectedOrg.id)} />
+        return <RostersPage org={selectedOrg} session={session} isDemoOrg={isDemoOrg} onRostersChanged={() => fetchRosters(selectedOrg.id)} />
       case 'tryouts':
-        return <TryoutsPage org={selectedOrg} session={session} />
+        return <TryoutsPage org={selectedOrg} session={session} isDemoOrg={isDemoOrg} />
       case 'gamesheet':
-        return <GameSheetPage org={selectedOrg} roster={selectedRoster} />
+        return <GameSheetPage org={selectedOrg} roster={selectedRoster} isDemoOrg={isDemoOrg} />
       case 'attendance':
-        return <AttendancePage org={selectedOrg} session={session} roster={selectedRoster} />
+        return <AttendancePage org={selectedOrg} session={session} roster={selectedRoster} isDemoOrg={isDemoOrg} />
       case 'stats':
-        return <StatsPage org={selectedOrg} roster={selectedRoster} />
+        return <StatsPage org={selectedOrg} roster={selectedRoster} isDemoOrg={isDemoOrg} />
       default:
         return <PlaceholderPage appName={NAV_ITEMS.find(n => n.key === currentApp)?.label} />
     }
@@ -155,6 +160,7 @@ function MainShell({ session }) {
         <UserProfileModal
           session={session}
           selectedOrg={selectedOrg}
+          accessStatus={accessStatus}
           onClose={() => setShowProfileModal(false)}
           onRostersRefresh={() => fetchRosters(selectedOrg?.id)}
           onSignOut={handleLogout}
@@ -168,6 +174,17 @@ function MainShell({ session }) {
           Offline — changes will sync when connection is restored
         </div>
       )}
+
+      {isDemoOrg && (
+        <div style={s.demoBanner}>
+          ⚡ DEMO MODE — Changes are not saved. Join a real org to track your team.
+        </div>
+      )}
+
+      <SubscriptionBanner
+        accessStatus={accessStatus}
+        onManageBilling={() => setShowProfileModal(true)}
+      />
 
       {toast && <div style={s.toast}>✓ {toast}</div>}
 
@@ -233,6 +250,12 @@ const styles = {
     color: '#fbbf24', fontFamily: "'Barlow Condensed', sans-serif",
     fontSize: '12px', fontWeight: '700', textAlign: 'center',
     padding: '6px 16px', letterSpacing: '0.5px', textTransform: 'uppercase'
+  },
+  demoBanner: {
+    background: 'rgba(255,152,0,0.12)', borderBottom: '1px solid rgba(255,152,0,0.3)',
+    color: 'rgba(255,152,0,0.95)', fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: '12px', fontWeight: '800', textAlign: 'center',
+    padding: '7px 16px', letterSpacing: '0.5px', textTransform: 'uppercase',
   },
   toast: {
     position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',

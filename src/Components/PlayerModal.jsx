@@ -9,7 +9,7 @@ const POSITIONS = [
   { value: 'e', label: 'Either' },
 ]
 
-function PlayerModal({ player, roster, onSave, onClose }) {
+function PlayerModal({ player, roster, onSave, onClose, isDemoOrg }) {
   const isAdult = roster?.age_group === 'adult'
   const [name, setName] = useState('')
   const [grade, setGrade] = useState('')
@@ -30,6 +30,7 @@ function PlayerModal({ player, roster, onSave, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!name.trim()) return
+    if (isDemoOrg) return
     setError(null)
     setSaving(true)
     try {
