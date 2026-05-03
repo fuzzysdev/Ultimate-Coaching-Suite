@@ -4,6 +4,7 @@ export default function GameInfoModal({
   setup, points, halftimeAfterPoint, onMarkHalftime, onClearHalftime,
   startTime, endTime, onChangeStartTime, onChangeEndTime,
   onUpdateSetup, onAbandon, onClose,
+  onForceRefresh, onAdjustScore,
 }) {
   const [timerSecs,      setTimerSecs]      = useState(0)
   const [timerRunning,   setTimerRunning]   = useState(false)
@@ -129,6 +130,38 @@ export default function GameInfoModal({
           </div>
         </div>
 
+        {/* Score sync */}
+        {(onForceRefresh || onAdjustScore) && (
+          <div style={MS.section}>
+            <div style={MS.sectionTitle}>SCORE SYNC</div>
+            {onForceRefresh && (
+              <button onClick={() => { onForceRefresh(); onClose() }} style={MS.syncBtn}>
+                Sync from DB
+              </button>
+            )}
+            {onAdjustScore && points.length > 0 && (
+              <>
+                <div style={MS.scoreAdjRow}>
+                  <button onClick={() => onAdjustScore('us', -1)} style={MS.adjBtn}>−</button>
+                  <span style={{ ...MS.adjLabel, color: '#00e5a0' }}>
+                    US {points[points.length - 1].ourScoreAfter}
+                  </span>
+                  <button onClick={() => onAdjustScore('us', +1)} style={MS.adjBtn}>+</button>
+                  <span style={MS.adjSep}> · </span>
+                  <button onClick={() => onAdjustScore('them', -1)} style={MS.adjBtn}>−</button>
+                  <span style={{ ...MS.adjLabel, color: '#ff4d6d' }}>
+                    THEM {points[points.length - 1].theirScoreAfter}
+                  </span>
+                  <button onClick={() => onAdjustScore('them', +1)} style={MS.adjBtn}>+</button>
+                </div>
+                <div style={MS.adjWarning}>
+                  Corrects score display only — use Sync from DB first if possible
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Abandon game */}
         <div style={MS.section}>
           {!abandonConfirm ? (
@@ -229,6 +262,34 @@ const MS = {
     flex: 1, border: 'none', borderRadius: 8,
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14, fontWeight: 800,
     padding: '10px 0', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer',
+  },
+
+  syncBtn: {
+    background: 'rgba(0,229,160,0.08)', border: '1px solid rgba(0,229,160,0.35)',
+    borderRadius: 8, color: '#00e5a0',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 800,
+    padding: '10px 0', textTransform: 'uppercase', letterSpacing: 0.5,
+    cursor: 'pointer', width: '100%',
+  },
+  scoreAdjRow: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+  },
+  adjBtn: {
+    background: '#0f1117', border: '1px solid #2a2f42', borderRadius: 6,
+    color: '#e8eaf0', fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 18, fontWeight: 900, width: 32, height: 32,
+    cursor: 'pointer', lineHeight: 1, padding: 0, flexShrink: 0,
+  },
+  adjLabel: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14, fontWeight: 800,
+    minWidth: 56, textAlign: 'center',
+  },
+  adjSep: {
+    color: '#4a5068', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14,
+  },
+  adjWarning: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 10, fontWeight: 700,
+    color: '#4a5068', textAlign: 'center', letterSpacing: 0.3,
   },
 
   abandonBtn: {

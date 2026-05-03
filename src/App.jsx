@@ -13,6 +13,7 @@ function App() {
   const [recoveryMode, setRecoveryMode] = useState(false)
   const [accessStatus, setAccessStatus] = useState(null)  // null | string
   const [checkingAccess, setCheckingAccess] = useState(false)
+  const [demoMode,     setDemoMode]     = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -24,9 +25,10 @@ function App() {
         if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true)
         else if (event === 'USER_UPDATED') setRecoveryMode(false)
         setSession(session)
-        // Re-check access when session changes (e.g. after sign-in)
-        if (session) checkAccess(session.user.id)
-        else setAccessStatus(null)
+        // TOKEN_REFRESHED fires silently in the background — skip re-checking
+        // access to avoid unmounting MainShell and losing active game state.
+        if (session && event !== 'TOKEN_REFRESHED') checkAccess(session.user.id)
+        else if (!session) setAccessStatus(null)
       }
     )
     return () => subscription?.unsubscribe()
@@ -82,7 +84,8 @@ function App() {
   if (!session) return <LoginPage />
 
   // ── Checking access ──
-  if (!accessStatus || checkingAccess) return <LoadingScreen />
+  // Keep showing the app during background re-checks to prevent MainShell unmount.
+  if (!accessStatus) return <LoadingScreen />
 
   // ── Route by access status ──
   switch (accessStatus) {
@@ -98,7 +101,8 @@ function App() {
       return <OrgBillingPage session={session} onAccessChange={() => setAccessStatus(null)} />
     case 'denied':
     default:
-      return <PaywallPage session={session} onAccessChange={() => setAccessStatus(null)} />
+      if (demoMode) return <MainShell session={session} accessStatus={accessStatus} onExitDemo={() => setDemoMode(false)} />
+      return <PaywallPage session={session} onAccessChange={() => setAccessStatus(null)} onTryDemo={() => setDemoMode(true)} />
   }
 }
 

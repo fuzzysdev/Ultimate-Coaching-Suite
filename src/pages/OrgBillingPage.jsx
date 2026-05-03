@@ -8,12 +8,8 @@ import { supabase } from '../lib/supabase'
 // Replace the priceId values below with your real Stripe Price IDs.
 
 const ORG_PLANS = [
-  { label: '5-Coach Monthly',  priceId: 'REPLACE_WITH_STRIPE_PRICE_ID_ORG_5_MONTHLY',  amount: '$35/mo',   seats: 5 },
-  { label: '5-Coach Annual',   priceId: 'REPLACE_WITH_STRIPE_PRICE_ID_ORG_5_YEARLY',   amount: '$299/yr',  seats: 5 },
-  { label: '10-Coach Monthly', priceId: 'REPLACE_WITH_STRIPE_PRICE_ID_ORG_10_MONTHLY', amount: '$60/mo',   seats: 10 },
-  { label: '10-Coach Annual',  priceId: 'REPLACE_WITH_STRIPE_PRICE_ID_ORG_10_YEARLY',  amount: '$499/yr',  seats: 10 },
-  { label: '25-Coach Monthly', priceId: 'REPLACE_WITH_STRIPE_PRICE_ID_ORG_25_MONTHLY', amount: '$120/mo',  seats: 25 },
-  { label: '25-Coach Annual',  priceId: 'REPLACE_WITH_STRIPE_PRICE_ID_ORG_25_YEARLY',  amount: '$999/yr',  seats: 25 },
+  { label: '5-Coach Annual',  priceId: 'price_1TS5FpJ80Mm4TIdPqE7xE19K',  amount: '$400/yr', seats: 5 },
+  { label: '10-Coach Annual', priceId: 'price_1TS5FoJ80Mm4TIdPNat17AW7', amount: '$600/yr', seats: 10 },
 ]
 
 export default function OrgBillingPage({ session, onAccessChange }) {

@@ -38,14 +38,56 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   const [playerOrder,        setPlayerOrder]        = useState([])
   const [liveMode,           setLiveMode]           = useState(false)
   const [liveCoaches,        setLiveCoaches]        = useState(0)
+  const [noSleep,            setNoSleep]            = useState(false)
 
-  const gridRef = useRef(null)
+  const gridRef     = useRef(null)
+  const wakeLockRef = useRef(null)
+  const noSleepRef  = useRef(false) // mirrors noSleep for use in event listeners
 
   const { subscribe, unsubscribe, disableLiveMode, checkLiveMode, refetchPoints } = useGameLiveMode({
     setLiveMode, setLiveCoaches, setOurTO, setTheirTO, setPoints,
   })
 
-  // Persist working state to localStorage (skip for demo games)
+  // ── Wake Lock ─────────────────────────────────────────────────────────────
+  const activeGameKey = roster?.id ? `ucs_active_game_${roster.id}` : null
+
+  const acquireWakeLock = async () => {
+    if (!('wakeLock' in navigator) || wakeLockRef.current) return
+    try {
+      wakeLockRef.current = await navigator.wakeLock.request('screen')
+      wakeLockRef.current.addEventListener('release', () => {
+        wakeLockRef.current = null
+      })
+    } catch {}
+  }
+
+  const toggleNoSleep = async () => {
+    const next = !noSleepRef.current
+    noSleepRef.current = next
+    setNoSleep(next)
+    if (next) {
+      await acquireWakeLock()
+    } else {
+      wakeLockRef.current?.release()
+      wakeLockRef.current = null
+    }
+  }
+
+  // Re-acquire wake lock when returning from lock screen (browser releases it on hide)
+  useEffect(() => {
+    const handler = async () => {
+      if (document.visibilityState === 'visible' && noSleepRef.current) {
+        await acquireWakeLock()
+      }
+    }
+    document.addEventListener('visibilitychange', handler)
+    return () => {
+      document.removeEventListener('visibilitychange', handler)
+      wakeLockRef.current?.release()
+    }
+  }, [])
+
+  // ── Persist working state to localStorage (skip for demo games) ──────────
   useEffect(() => {
     if (!game?.id || game.id === 'demo-game') return
     const linesSerial = {}
@@ -82,8 +124,16 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       .in('status', ['active', 'completed'])
       .order('created_at', { ascending: false })
     const all = data || []
-    setActiveGames(all.filter(g => g.status === 'active'))
+    const active = all.filter(g => g.status === 'active')
+    setActiveGames(active)
     setCompletedGames(all.filter(g => g.status === 'completed'))
+
+    // Auto-restore active game after device lock / page reload
+    const savedId = localStorage.getItem(`ucs_active_game_${roster.id}`)
+    if (savedId) {
+      const savedGame = active.find(g => g.id === savedId)
+      if (savedGame) openActiveGame(savedGame)
+    }
   }
 
   const openActiveGame = async (g) => {
@@ -128,12 +178,23 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       setGameStartTime(new Date(g.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
     }
 
+    // Sync games table score with game_points in case they diverged
+    if (!isDemoOrg && gamePoints?.length > 0) {
+      const lastPt = gamePoints[gamePoints.length - 1]
+      if (g.our_score !== lastPt.our_score_after || g.their_score !== lastPt.their_score_after) {
+        supabase.from('games').update({
+          our_score: lastPt.our_score_after, their_score: lastPt.their_score_after,
+        }).eq('id', g.id).then(({ error }) => { if (error) console.error('score sync:', error) })
+      }
+    }
+
     setGame(g)
     setSetup(restoredSetup)
     setPoints(restoredPoints)
     setLines(restoredLines)
     setOurTO(g.our_timeouts_used || 0)
     setTheirTO(g.their_timeouts_used || 0)
+    if (!isDemoOrg && activeGameKey) localStorage.setItem(activeGameKey, g.id)
     scrollToCurrent()
     checkLiveMode(g)
   }
@@ -323,7 +384,6 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
 
   const handleStartGame = async (setupData) => {
     if (isDemoOrg) {
-      // In demo mode, create a fake in-memory game without touching the DB
       setGame({ id: 'demo-game', opponent: setupData.opponent, our_score: 0, their_score: 0 })
       setSetup(setupData); setPoints([]); setLines({})
       setOurTO(0); setTheirTO(0); setPlayerStatus({})
@@ -339,6 +399,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       line_size: setupData.lineSize, status: 'active',
     }).select().single()
     if (error) { console.error(error); return }
+    if (activeGameKey) localStorage.setItem(activeGameKey, data.id)
     setGame(data); setSetup(setupData); setPoints([]); setLines({})
     setOurTO(0); setTheirTO(0); setPlayerStatus({})
     setHalftimeAfterPoint(null); setShowSetup(false)
@@ -360,6 +421,9 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       unsubscribe()
       setLiveMode(false)
       if (game?.id) localStorage.removeItem(`ucs_game_${game.id}`)
+      if (activeGameKey) localStorage.removeItem(activeGameKey)
+      noSleepRef.current = false; setNoSleep(false)
+      wakeLockRef.current?.release(); wakeLockRef.current = null
       setShowEndDialog(false); setGame(null); setSetup(null); setPoints([]); setLines({})
       setPlayerStatus({}); setHalftimeAfterPoint(null); setGameStartTime(''); setGameEndTime('')
       fetchAllGames()
@@ -389,6 +453,9 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     await supabase.from('spirit_ratings').delete().eq('game_id', game.id)
     await supabase.from('games').delete().eq('id', game.id)
     localStorage.removeItem(`ucs_game_${game.id}`)
+    if (activeGameKey) localStorage.removeItem(activeGameKey)
+    noSleepRef.current = false; setNoSleep(false)
+    wakeLockRef.current?.release(); wakeLockRef.current = null
     unsubscribe()
     setLiveMode(false)
     setShowGameInfo(false)
@@ -396,6 +463,65 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     setOurTO(0); setTheirTO(0); setPlayerStatus({})
     setHalftimeAfterPoint(null); setGameStartTime(''); setGameEndTime('')
     fetchAllGames()
+  }
+
+  const handleBack = () => {
+    if (activeGameKey && !readOnly) localStorage.removeItem(activeGameKey)
+    noSleepRef.current = false; setNoSleep(false)
+    wakeLockRef.current?.release(); wakeLockRef.current = null
+    setGame(null); setSetup(null); setPoints([]); setLines({})
+  }
+
+  // ── Score sync: re-fetch all points from DB ───────────────────────────────
+  const forceRefreshGame = async () => {
+    if (!game?.id || isDemoOrg) return
+    const [{ data: freshGame }, { data: freshPoints }] = await Promise.all([
+      supabase.from('games')
+        .select('id, opponent, our_score, their_score, created_at, status, first_gender, starting_action, direction, line_size, our_timeouts_used, their_timeouts_used')
+        .eq('id', game.id).single(),
+      supabase.from('game_points').select('*').eq('game_id', game.id).order('point_number'),
+    ])
+    if (!freshPoints) return
+    const newPoints = freshPoints.map(gp => ({
+      gender:          gp.gender,
+      scoredBy:        gp.scored_by,
+      ourScoreAfter:   gp.our_score_after,
+      theirScoreAfter: gp.their_score_after,
+    }))
+    const newLines = {}
+    freshPoints.forEach(gp => { newLines[gp.point_number] = new Set(gp.player_ids || []) })
+    setPoints(newPoints)
+    setLines(prev => {
+      const merged = { ...newLines }
+      Object.entries(prev).forEach(([k, s]) => {
+        if (Number(k) >= freshPoints.length) merged[k] = s
+      })
+      return merged
+    })
+    if (freshGame) {
+      setOurTO(freshGame.our_timeouts_used || 0)
+      setTheirTO(freshGame.their_timeouts_used || 0)
+      setGame(freshGame)
+    }
+  }
+
+  // ── Score override: adjust last point's cumulative scores in DB ───────────
+  const adjustScore = (team, delta) => {
+    if (!game?.id || isDemoOrg || readOnly || points.length === 0) return
+    const idx    = points.length - 1
+    const last   = points[idx]
+    const newOur   = team === 'us'   ? Math.max(0, last.ourScoreAfter   + delta) : last.ourScoreAfter
+    const newThem  = team === 'them' ? Math.max(0, last.theirScoreAfter + delta) : last.theirScoreAfter
+    const updated  = { ...last, ourScoreAfter: newOur, theirScoreAfter: newThem }
+    const newPts   = [...points]; newPts[idx] = updated
+    setPoints(newPts)
+    supabase.from('game_points')
+      .update({ our_score_after: newOur, their_score_after: newThem })
+      .eq('game_id', game.id).eq('point_number', idx)
+      .then(({ error }) => { if (error) console.error('adjustScore game_points:', error) })
+    supabase.from('games').update({ our_score: newOur, their_score: newThem })
+      .eq('id', game.id)
+      .then(({ error }) => { if (error) console.error('adjustScore games:', error) })
   }
 
   // ── Reorder ────────────────────────────────────────────────────────────────
@@ -549,6 +675,8 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     ...extra
   })
 
+  const wakeLockSupported = 'wakeLock' in navigator
+
   return (
     <div style={S.container}>
       {showEndDialog && (
@@ -571,6 +699,8 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
           onChangeStartTime={setGameStartTime} onChangeEndTime={setGameEndTime}
           onUpdateSetup={(updates) => setSetup(prev => ({ ...prev, ...updates }))}
           onAbandon={handleAbandonGame}
+          onForceRefresh={isDemoOrg ? null : forceRefreshGame}
+          onAdjustScore={isDemoOrg ? null : adjustScore}
           onClose={() => setShowGameInfo(false)}
         />
       )}
@@ -652,7 +782,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       {/* ── Action Bar ── */}
       {readOnly ? (
         <div style={S.actionBar}>
-          <button onClick={() => { setGame(null); setSetup(null); setPoints([]); setLines({}) }} style={S.btnEnd}>
+          <button onClick={handleBack} style={S.btnEnd}>
             ← Games
           </button>
           <button onClick={() => setLightGrid(l => !l)} style={S.btnLight}>
@@ -661,7 +791,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
         </div>
       ) : (
         <div style={S.actionBar}>
-          <button onClick={() => { setGame(null); setSetup(null); setPoints([]); setLines({}) }} style={S.btnBack}>‹</button>
+          <button onClick={handleBack} style={S.btnBack}>‹</button>
           <button onClick={() => recordPoint('us')} style={S.btnUs}>▲ We Scored</button>
           <button onClick={() => recordPoint('them')} style={S.btnThem}>▲ They Scored</button>
           <button onClick={undoPoint} style={S.btnUndo} disabled={points.length === 0}>↩ Undo</button>
@@ -669,6 +799,13 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
           <button onClick={enterReorder} style={S.btnReorder} title="Reorder players">⇅</button>
           <button onClick={toggleLiveMode} style={{ ...S.btnLive, ...(liveMode ? S.btnLiveOn : {}) }}
             title={liveMode ? 'Turn off live sync' : 'Turn on live sync'}>⊙</button>
+          {wakeLockSupported && (
+            <button onClick={toggleNoSleep}
+              style={{ ...S.btnLight, ...(noSleep ? S.noSleepOn : {}) }}
+              title={noSleep ? 'Screen will stay on — tap to allow sleep' : 'Tap to keep screen on'}>
+              {noSleep ? '☀' : '☾'}
+            </button>
+          )}
           <button onClick={() => setLightGrid(l => !l)} style={S.btnLight}>
             {lightGrid ? '🌙' : '☀️'}
           </button>
@@ -992,6 +1129,10 @@ const S = {
   btnLight: {
     background: 'transparent', border: '1px solid #2a2f42', borderRadius: 7,
     fontSize: 16, padding: '4px 8px', cursor: 'pointer', lineHeight: 1, flexShrink: 0
+  },
+  noSleepOn: {
+    border: '1px solid rgba(255,200,50,0.8)', color: 'rgba(255,200,50,1)',
+    background: 'rgba(255,200,50,0.12)',
   },
   btnReorder: {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 900,

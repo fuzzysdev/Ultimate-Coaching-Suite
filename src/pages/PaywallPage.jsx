@@ -12,8 +12,8 @@ const PLANS = [
     label: 'Individual Coach',
     description: 'One coach, full access to all features',
     prices: [
-      { label: 'Monthly', priceId: 'REPLACE_WITH_STRIPE_PRICE_ID_INDIVIDUAL_MONTHLY', amount: '$9/mo' },
-      { label: 'Annual',  priceId: 'REPLACE_WITH_STRIPE_PRICE_ID_INDIVIDUAL_YEARLY',  amount: '$79/yr', badge: 'Save 27%' },
+      { label: 'Monthly', priceId: 'price_1TS5FkJ80Mm4TIdPwNsrpbpN', amount: '$10/mo' },
+      { label: 'Annual',  priceId: 'price_1TS5FlJ80Mm4TIdPWOwbCdK7',  amount: '$100/yr', badge: 'Save 20%' },
     ],
   },
   {
@@ -21,8 +21,7 @@ const PLANS = [
     label: '5-Coach Team',
     description: 'Org admin manages 5 coaching licenses',
     prices: [
-      { label: 'Monthly', priceId: 'REPLACE_WITH_STRIPE_PRICE_ID_ORG_5_MONTHLY', amount: '$35/mo' },
-      { label: 'Annual',  priceId: 'REPLACE_WITH_STRIPE_PRICE_ID_ORG_5_YEARLY',  amount: '$299/yr', badge: 'Save 29%' },
+      { label: 'Annual', priceId: 'price_1TS5FpJ80Mm4TIdPqE7xE19K', amount: '$400/yr', badge: '$80/coach' },
     ],
   },
   {
@@ -30,22 +29,12 @@ const PLANS = [
     label: '10-Coach Team',
     description: 'Org admin manages 10 coaching licenses',
     prices: [
-      { label: 'Monthly', priceId: 'REPLACE_WITH_STRIPE_PRICE_ID_ORG_10_MONTHLY', amount: '$60/mo' },
-      { label: 'Annual',  priceId: 'REPLACE_WITH_STRIPE_PRICE_ID_ORG_10_YEARLY',  amount: '$499/yr', badge: 'Save 31%' },
-    ],
-  },
-  {
-    id: 'org_25',
-    label: '25-Coach Team',
-    description: 'Org admin manages 25 coaching licenses',
-    prices: [
-      { label: 'Monthly', priceId: 'REPLACE_WITH_STRIPE_PRICE_ID_ORG_25_MONTHLY', amount: '$120/mo' },
-      { label: 'Annual',  priceId: 'REPLACE_WITH_STRIPE_PRICE_ID_ORG_25_YEARLY',  amount: '$999/yr', badge: 'Save 31%' },
+      { label: 'Annual', priceId: 'price_1TS5FoJ80Mm4TIdPNat17AW7', amount: '$600/yr', badge: '$60/coach' },
     ],
   },
 ]
 
-export default function PaywallPage({ session, onAccessChange }) {
+export default function PaywallPage({ session, onAccessChange, onTryDemo }) {
   const [loading, setLoading] = useState(null) // priceId being loaded
   const [error,   setError]   = useState(null)
 
@@ -101,6 +90,11 @@ export default function PaywallPage({ session, onAccessChange }) {
         <div style={S.footer}>
           <p style={S.footerText}>Already subscribed? <span style={S.footerLink} onClick={onAccessChange}>Refresh access</span></p>
           <button onClick={handleSignOut} style={S.signOutBtn}>Sign Out</button>
+          {onTryDemo && (
+            <button onClick={onTryDemo} style={S.demoBtn}>
+              Not ready? Explore the demo first →
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -220,5 +214,11 @@ const S = {
     background: 'none', border: '1px solid #2a2f42', borderRadius: 8,
     color: '#7a8099', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12,
     fontWeight: 700, padding: '8px 20px', textTransform: 'uppercase', cursor: 'pointer',
+  },
+  demoBtn: {
+    background: 'none', border: 'none', cursor: 'pointer',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 700,
+    color: '#4a5068', textDecoration: 'underline', padding: '4px 0',
+    letterSpacing: 0.3,
   },
 }

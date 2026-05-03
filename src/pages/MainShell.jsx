@@ -22,7 +22,7 @@ const NAV_ITEMS = [
   { key: 'tournaments', label: 'Tournaments' },
 ]
 
-function MainShell({ session, accessStatus }) {
+function MainShell({ session, accessStatus, onExitDemo }) {
   const [organizations,  setOrganizations]  = useState([])
   const [selectedOrg,    setSelectedOrg]    = useState(null)
   const [rosters,        setRosters]        = useState([])
@@ -175,7 +175,7 @@ function MainShell({ session, accessStatus }) {
         </div>
       )}
 
-      {isDemoOrg && (
+      {isDemoOrg && accessStatus !== 'denied' && (
         <div style={s.demoBanner}>
           ⚡ DEMO MODE — Changes are not saved. Join a real org to track your team.
         </div>
@@ -183,7 +183,7 @@ function MainShell({ session, accessStatus }) {
 
       <SubscriptionBanner
         accessStatus={accessStatus}
-        onManageBilling={() => setShowProfileModal(true)}
+        onManageBilling={accessStatus === 'denied' && onExitDemo ? onExitDemo : () => setShowProfileModal(true)}
       />
 
       {toast && <div style={s.toast}>✓ {toast}</div>}
