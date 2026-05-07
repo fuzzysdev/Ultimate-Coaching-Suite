@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { enqueuePendingPoint, dequeuePendingPoint, getPendingPoints, clearPendingPoints } from '../lib/offlineStore'
 import GameSetupDialog from '../Components/GameSetupDialog'
 import GameEndDialog from '../Components/GameEndDialog'
 import GoalAssistModal from '../Components/GoalAssistModal'
@@ -39,10 +40,14 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   const [liveMode,           setLiveMode]           = useState(false)
   const [liveCoaches,        setLiveCoaches]        = useState(0)
   const [noSleep,            setNoSleep]            = useState(false)
+  const [resumeBanner,       setResumeBanner]       = useState(null)
 
-  const gridRef     = useRef(null)
-  const wakeLockRef = useRef(null)
-  const noSleepRef  = useRef(false) // mirrors noSleep for use in event listeners
+  const gridRef         = useRef(null)
+  const wakeLockRef     = useRef(null)
+  const noSleepRef      = useRef(false) // mirrors noSleep for use in event listeners
+  const forceRefreshRef = useRef(null)
+  const gameRef         = useRef(null)
+  const openActiveRef   = useRef(null)
 
   const { subscribe, unsubscribe, disableLiveMode, checkLiveMode, refetchPoints } = useGameLiveMode({
     setLiveMode, setLiveCoaches, setOurTO, setTheirTO, setPoints,
@@ -73,11 +78,14 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     }
   }
 
-  // Re-acquire wake lock when returning from lock screen (browser releases it on hide)
+  // Re-acquire wake lock and resync game state when returning from sleep/lock screen
   useEffect(() => {
     const handler = async () => {
-      if (document.visibilityState === 'visible' && noSleepRef.current) {
-        await acquireWakeLock()
+      if (document.visibilityState !== 'visible') return
+      if (noSleepRef.current) await acquireWakeLock()
+      const g = gameRef.current
+      if (g?.id && g.id !== 'demo-game' && g.status !== 'completed') {
+        openActiveRef.current?.(g, { showBanner: true })
       }
     }
     document.addEventListener('visibilitychange', handler)
@@ -132,14 +140,30 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     const savedId = localStorage.getItem(`ucs_active_game_${roster.id}`)
     if (savedId) {
       const savedGame = active.find(g => g.id === savedId)
-      if (savedGame) openActiveGame(savedGame)
+      if (savedGame) openActiveGame(savedGame, { showBanner: true })
     }
   }
 
-  const openActiveGame = async (g) => {
+  const openActiveGame = async (g, { showBanner = false } = {}) => {
     const { data: gamePoints } = await supabase
       .from('game_points').select('*')
       .eq('game_id', g.id).order('point_number')
+
+    // Re-insert any points committed locally but lost before reaching the DB
+    const pending    = !isDemoOrg ? getPendingPoints(g.id) : []
+    const dbNums     = new Set((gamePoints || []).map(gp => gp.point_number))
+    const toReinsert = pending
+      .filter(p => !dbNums.has(p.point_number))
+      .sort((a, b) => a.point_number - b.point_number)
+    const recovered = []
+    for (const pt of toReinsert) {
+      const { error } = await supabase.from('game_points')
+        .upsert(pt, { onConflict: 'game_id,point_number' })
+      if (!error) { recovered.push(pt); dequeuePendingPoint(g.id, pt.point_number) }
+    }
+
+    const allGamePoints = [...(gamePoints || []), ...recovered]
+      .sort((a, b) => a.point_number - b.point_number)
 
     const restoredSetup = {
       opponent:       g.opponent,
@@ -149,7 +173,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       lineSize:       g.line_size,
     }
 
-    const restoredPoints = (gamePoints || []).map(gp => ({
+    const restoredPoints = allGamePoints.map(gp => ({
       gender:          gp.gender,
       scoredBy:        gp.scored_by,
       ourScoreAfter:   gp.our_score_after,
@@ -157,7 +181,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     }))
 
     const restoredLines = {}
-    ;(gamePoints || []).forEach(gp => {
+    allGamePoints.forEach(gp => {
       restoredLines[gp.point_number] = new Set(gp.player_ids || [])
     })
 
@@ -178,9 +202,9 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       setGameStartTime(new Date(g.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
     }
 
-    // Sync games table score with game_points in case they diverged
-    if (!isDemoOrg && gamePoints?.length > 0) {
-      const lastPt = gamePoints[gamePoints.length - 1]
+    // Sync games table score with all points (including any recovered ones)
+    if (!isDemoOrg && allGamePoints.length > 0) {
+      const lastPt = allGamePoints[allGamePoints.length - 1]
       if (g.our_score !== lastPt.our_score_after || g.their_score !== lastPt.their_score_after) {
         supabase.from('games').update({
           our_score: lastPt.our_score_after, their_score: lastPt.their_score_after,
@@ -197,6 +221,12 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     if (!isDemoOrg && activeGameKey) localStorage.setItem(activeGameKey, g.id)
     scrollToCurrent()
     checkLiveMode(g)
+
+    if (showBanner) {
+      const nextGender = getGenderForPoint(restoredPoints.length, g.first_gender)
+      setResumeBanner({ nextPt: restoredPoints.length + 1, gender: nextGender, recovered: recovered.length })
+      setTimeout(() => setResumeBanner(null), 4500)
+    }
   }
 
   const loadCompletedGame = async (g) => {
@@ -333,13 +363,19 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     setPendingPoint(null)
     scrollToCurrent()
     if (isDemoOrg) return
-    supabase.from('game_points').insert({
+    const ptPayload = {
       game_id: game.id, point_number: pointNum, gender: pointGender,
       scored_by: scoredBy, player_ids: lineSnapshot,
       our_score_after: newOur, their_score_after: newTheir,
       goal_scorer_id: goalScorerId || null,
       assist_player_id: assistPlayerId || null,
-    }).then(({ error }) => { if (error) console.error('game_points insert:', error) })
+    }
+    enqueuePendingPoint(game.id, ptPayload)
+    supabase.from('game_points').insert(ptPayload)
+      .then(({ error }) => {
+        if (error) console.error('game_points insert:', error)
+        else dequeuePendingPoint(game.id, pointNum)
+      })
     supabase.from('games').update({ our_score: newOur, their_score: newTheir })
       .eq('id', game.id)
       .then(({ error }) => { if (error) console.error('games score update:', error) })
@@ -420,7 +456,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       await supabase.from('games').update({ status: 'completed', ended_at: new Date().toISOString(), live_mode: false }).eq('id', game.id)
       unsubscribe()
       setLiveMode(false)
-      if (game?.id) localStorage.removeItem(`ucs_game_${game.id}`)
+      if (game?.id) { localStorage.removeItem(`ucs_game_${game.id}`); clearPendingPoints(game.id) }
       if (activeGameKey) localStorage.removeItem(activeGameKey)
       noSleepRef.current = false; setNoSleep(false)
       wakeLockRef.current?.release(); wakeLockRef.current = null
@@ -453,6 +489,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     await supabase.from('spirit_ratings').delete().eq('game_id', game.id)
     await supabase.from('games').delete().eq('id', game.id)
     localStorage.removeItem(`ucs_game_${game.id}`)
+    clearPendingPoints(game.id)
     if (activeGameKey) localStorage.removeItem(activeGameKey)
     noSleepRef.current = false; setNoSleep(false)
     wakeLockRef.current?.release(); wakeLockRef.current = null
@@ -576,6 +613,11 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       subscribe(game.id, expiresAt)
     }
   }
+
+  // Keep stale-closure-safe refs current every render
+  gameRef.current         = game
+  forceRefreshRef.current = forceRefreshGame
+  openActiveRef.current   = openActiveGame
 
   // ── Games list (landing page) ───────────────────────────────────────────────
   if (!setup) {
@@ -703,6 +745,13 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
           onAdjustScore={isDemoOrg ? null : adjustScore}
           onClose={() => setShowGameInfo(false)}
         />
+      )}
+
+      {resumeBanner && (
+        <div style={S.resumeBanner}>
+          Resumed · {!isSingle && `${resumeBanner.gender === 'm' ? '♂' : '♀'} `}Pt {resumeBanner.nextPt}
+          {resumeBanner.recovered > 0 && ` · ${resumeBanner.recovered} pt${resumeBanner.recovered > 1 ? 's' : ''} recovered`}
+        </div>
       )}
 
       {/* ── Header: US score | center info | THEM score ── */}
@@ -1226,4 +1275,13 @@ const S = {
   },
   pastDate:  { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, color: '#4a5068', letterSpacing: 0.5 },
   pastScore: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 900, lineHeight: 1 },
+
+  resumeBanner: {
+    position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)',
+    background: 'rgba(0,229,160,0.95)', color: '#0f1117',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 800,
+    padding: '6px 18px', borderRadius: 20, letterSpacing: 0.5, textTransform: 'uppercase',
+    zIndex: 200, pointerEvents: 'none', whiteSpace: 'nowrap',
+    boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+  },
 }

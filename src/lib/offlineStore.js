@@ -59,3 +59,37 @@ export const offlineStore = {
     } catch { }
   },
 }
+
+// ── Per-game pending point queue ──────────────────────────────────────────────
+// Stores points committed locally but not yet confirmed by Supabase, so they
+// can be re-inserted if the device sleeps before the network call completes.
+
+const PP = 'ucs_pending_pts_'
+
+export const enqueuePendingPoint = (gameId, pointData) => {
+  try {
+    const key = PP + gameId
+    const arr = JSON.parse(localStorage.getItem(key) || '[]')
+    const deduped = arr.filter(p => p.point_number !== pointData.point_number)
+    deduped.push(pointData)
+    localStorage.setItem(key, JSON.stringify(deduped))
+  } catch {}
+}
+
+export const dequeuePendingPoint = (gameId, pointNumber) => {
+  try {
+    const key = PP + gameId
+    const arr = JSON.parse(localStorage.getItem(key) || '[]')
+      .filter(p => p.point_number !== pointNumber)
+    if (arr.length === 0) localStorage.removeItem(key)
+    else localStorage.setItem(key, JSON.stringify(arr))
+  } catch {}
+}
+
+export const getPendingPoints = (gameId) => {
+  try { return JSON.parse(localStorage.getItem(PP + gameId) || '[]') } catch { return [] }
+}
+
+export const clearPendingPoints = (gameId) => {
+  try { localStorage.removeItem(PP + gameId) } catch {}
+}
