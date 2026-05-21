@@ -177,25 +177,30 @@ function Toggle({ active, onClick, children }) {
 }
 
 // ── Top Bar ────────────────────────────────────────────────────────────────────
-function TopBar({ pointNum, genderLabel, genderColor }) {
+function TopBar({ pointNum, genderLabel, topBarBg }) {
+  const isColoured = topBarBg !== '#0a0d14'
   return (
     <div style={{
-      height: 52, background: '#0a0d14', borderBottom: '1px solid #1e2336',
+      height: 52, background: topBarBg,
+      borderBottom: isColoured ? 'none' : '1px solid #1e2336',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       gap: 14, flexShrink: 0, padding: '0 16px',
+      transition: 'background 0.4s ease',
     }}>
       <span style={{
-        fontSize: 15, fontWeight: 900, color: '#4a5068',
+        fontSize: 15, fontWeight: 900,
+        color: isColoured ? 'rgba(255,255,255,0.6)' : '#4a5068',
         textTransform: 'uppercase', letterSpacing: 2,
       }}>
         Point {pointNum}
       </span>
       {genderLabel && (
         <>
-          <span style={{ color: '#1e2336', fontSize: 20, fontWeight: 900 }}>·</span>
+          <span style={{ color: isColoured ? 'rgba(255,255,255,0.3)' : '#1e2336', fontSize: 20, fontWeight: 900 }}>·</span>
           <span style={{
             fontSize: 22, fontWeight: 900, letterSpacing: 1,
-            color: genderColor, textTransform: 'uppercase',
+            color: isColoured ? '#ffffff' : '#e8eaf0',
+            textTransform: 'uppercase',
           }}>
             {genderLabel}
           </span>
@@ -531,7 +536,7 @@ const ghostBtn = {
 
 // ── Team Panel ─────────────────────────────────────────────────────────────────
 // Tapping anywhere on the panel scores +1; the persistent button is −1 (undo that team)
-function TeamPanel({ name, score, bgColor, textColor, onScore, onMinus, canMinus }) {
+function TeamPanel({ name, score, bgColor, textColor, onScore, onMinus, canMinus, isLandscape }) {
   const rgb = hexToRgb(textColor)
   return (
     <div
@@ -540,12 +545,14 @@ function TeamPanel({ name, score, bgColor, textColor, onScore, onMinus, canMinus
         flex: 1, background: bgColor,
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'space-between',
-        padding: '20px 12px 16px', userSelect: 'none', overflow: 'hidden',
+        padding: isLandscape ? '8px 12px 8px' : '20px 12px 16px',
+        userSelect: 'none', overflow: 'hidden',
         cursor: 'pointer', touchAction: 'manipulation',
       }}
     >
       <div style={{
-        fontSize: 'clamp(13px, 3vw, 22px)', fontWeight: 900, textTransform: 'uppercase',
+        fontSize: isLandscape ? 'clamp(11px, 2.5vw, 18px)' : 'clamp(13px, 3vw, 22px)',
+        fontWeight: 900, textTransform: 'uppercase',
         letterSpacing: 1, color: textColor, opacity: 0.85, textAlign: 'center',
         maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>
@@ -553,7 +560,10 @@ function TeamPanel({ name, score, bgColor, textColor, onScore, onMinus, canMinus
       </div>
 
       <div style={{
-        fontSize: 'clamp(80px, 26vw, 240px)', fontWeight: 900, lineHeight: 1,
+        // Use min(vw,vh) so the score scales to whichever dimension is smaller —
+        // prevents the number from overflowing in landscape where height is tight.
+        fontSize: 'clamp(48px, min(24vw, 28vh), 240px)',
+        fontWeight: 900, lineHeight: 1,
         color: textColor, textAlign: 'center', pointerEvents: 'none',
       }}>
         {score}
@@ -568,9 +578,11 @@ function TeamPanel({ name, score, bgColor, textColor, onScore, onMinus, canMinus
           border: `2px solid rgba(${rgb}, ${canMinus ? '0.4' : '0.15'})`,
           borderRadius: 12, color: canMinus ? textColor : `rgba(${rgb}, 0.3)`,
           fontFamily: "'Barlow Condensed', sans-serif",
-          fontSize: 'clamp(18px, 4vw, 28px)', fontWeight: 900,
-          padding: '12px 44px', cursor: canMinus ? 'pointer' : 'default',
-          letterSpacing: 1, touchAction: 'manipulation',
+          fontSize: isLandscape ? 'clamp(13px, 2.5vh, 20px)' : 'clamp(18px, 4vw, 28px)',
+          fontWeight: 900,
+          padding: isLandscape ? '6px 28px' : '12px 44px',
+          cursor: canMinus ? 'pointer' : 'default',
+          letterSpacing: 1, touchAction: 'manipulation', flexShrink: 0,
         }}
       >
         − 1
@@ -611,6 +623,14 @@ export default function ScoreboardPage() {
   const [editOpen,    setEditOpen]    = useState(false)
   const [isLandscape, setIsLandscape] = useState(window.innerWidth > window.innerHeight)
 
+  // Swap PWA manifest so "Add to Home Screen" installs as "UCS Scoreboard"
+  useEffect(() => {
+    const link = document.querySelector('link[rel="manifest"]')
+    const original = link?.getAttribute('href')
+    if (link) link.setAttribute('href', '/scoreboard.webmanifest')
+    return () => { if (link && original) link.setAttribute('href', original) }
+  }, [])
+
   useEffect(() => {
     if (phase !== 'game' || !navigator.wakeLock) return
     let lock = null
@@ -642,6 +662,9 @@ export default function ScoreboardPage() {
     : curGender === 'f' ? '♀  4F, 3M'
     : '— choosing'
   const genderColor = curGender ? GENDER_COLOR[curGender] : '#4a5068'
+  const topBarBg    = curGender === 'm' ? '#1a4a8c'
+                    : curGender === 'f' ? '#8c1a50'
+                    : '#0a0d14'
 
   // −1 for a specific team: undo only if that team scored the last point
   const lastScoredBy = points.length ? points[points.length - 1].scoredBy : null
@@ -708,7 +731,7 @@ export default function ScoreboardPage() {
       <TopBar
         pointNum={curPointIdx + 1}
         genderLabel={genderLabel}
-        genderColor={genderColor}
+        topBarBg={topBarBg}
       />
 
       {/* Team panels */}
@@ -719,6 +742,7 @@ export default function ScoreboardPage() {
           onScore={() => handleScore('team1')}
           onMinus={() => handleMinus('team1')}
           canMinus={lastScoredBy === 'team1'}
+          isLandscape={isLandscape}
         />
         <div style={{ width: 3, background: '#0a0d14', flexShrink: 0 }} />
         <TeamPanel
@@ -727,6 +751,7 @@ export default function ScoreboardPage() {
           onScore={() => handleScore('team2')}
           onMinus={() => handleMinus('team2')}
           canMinus={lastScoredBy === 'team2'}
+          isLandscape={isLandscape}
         />
       </div>
 
