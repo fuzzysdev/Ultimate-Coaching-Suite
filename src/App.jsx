@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
+import ScoreboardPage from './pages/ScoreboardPage'
 import LoginPage from './pages/LoginPage'
 import LandingPage from './pages/LandingPage'
 import HowItWorksPage from './pages/HowItWorksPage'
@@ -80,6 +81,9 @@ function App() {
       setCheckingAccess(false)
     }
   }
+
+  // ── Public routes (no auth required) ──
+  if (pathname === '/scoreboard') return <ScoreboardPage />
 
   // ── Loading states ──
   if (loading) return <LoadingScreen />
