@@ -542,20 +542,38 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     }
   }
 
-  // ── Score override: adjust last point's cumulative scores in DB ───────────
+  // ── Score override: adjust scores in DB ────────────────────────────────────
+  // Increment (+1): inserts a synthetic completed point so curIdx (= points.length)
+  //   advances and the gender ratio for the next point updates correctly.
+  // Decrement (-1): corrects the last point's cumulative tally without adding a point.
   const adjustScore = (team, delta) => {
     if (!game?.id || isDemoOrg || readOnly || points.length === 0) return
-    const idx    = points.length - 1
-    const last   = points[idx]
+    const last   = points[points.length - 1]
     const newOur   = team === 'us'   ? Math.max(0, last.ourScoreAfter   + delta) : last.ourScoreAfter
     const newThem  = team === 'them' ? Math.max(0, last.theirScoreAfter + delta) : last.theirScoreAfter
-    const updated  = { ...last, ourScoreAfter: newOur, theirScoreAfter: newThem }
-    const newPts   = [...points]; newPts[idx] = updated
-    setPoints(newPts)
-    supabase.from('game_points')
-      .update({ our_score_after: newOur, their_score_after: newThem })
-      .eq('game_id', game.id).eq('point_number', idx)
-      .then(({ error }) => { if (error) console.error('adjustScore game_points:', error) })
+
+    if (delta > 0) {
+      // Add a synthetic completed point so curIdx advances
+      const newPointNum = points.length
+      setPoints(prev => [...prev, { gender: curGender, scoredBy: team, ourScoreAfter: newOur, theirScoreAfter: newThem }])
+      supabase.from('game_points')
+        .upsert({
+          game_id: game.id, point_number: newPointNum, gender: curGender,
+          scored_by: team, player_ids: [],
+          our_score_after: newOur, their_score_after: newThem,
+          goal_scorer_id: null, assist_player_id: null,
+        }, { onConflict: 'game_id,point_number' })
+        .then(({ error }) => { if (error) console.error('adjustScore insert:', error) })
+    } else {
+      // Decrement: patch the last point's cumulative score
+      const idx    = points.length - 1
+      const newPts = [...points]; newPts[idx] = { ...last, ourScoreAfter: newOur, theirScoreAfter: newThem }
+      setPoints(newPts)
+      supabase.from('game_points')
+        .update({ our_score_after: newOur, their_score_after: newThem })
+        .eq('game_id', game.id).eq('point_number', idx)
+        .then(({ error }) => { if (error) console.error('adjustScore update:', error) })
+    }
     supabase.from('games').update({ our_score: newOur, their_score: newThem })
       .eq('id', game.id)
       .then(({ error }) => { if (error) console.error('adjustScore games:', error) })

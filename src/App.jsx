@@ -16,7 +16,7 @@ function App() {
   const [accessStatus, setAccessStatus] = useState(null)  // null | string
   const [checkingAccess, setCheckingAccess] = useState(false)
   const [demoMode,     setDemoMode]     = useState(false)
-  const [showLogin,    setShowLogin]    = useState(false)
+  const [showLanding,  setShowLanding]  = useState(false)
   const [loginMode,    setLoginMode]    = useState('signin') // 'signin' | 'signup'
   const [pathname,     setPathname]     = useState(window.location.pathname)
 
@@ -95,19 +95,19 @@ function App() {
   if (!session) {
     if (pathname === '/how-it-works') {
       return <HowItWorksPage
-        onSignIn={() => { setLoginMode('signin'); setShowLogin(true); window.history.pushState({}, '', '/'); setPathname('/') }}
-        onSignUp={() => { setLoginMode('signup'); setShowLogin(true); window.history.pushState({}, '', '/'); setPathname('/') }}
+        onSignIn={() => { setLoginMode('signin'); setShowLanding(false); window.history.pushState({}, '', '/'); setPathname('/') }}
+        onSignUp={() => { setLoginMode('signup'); setShowLanding(false); window.history.pushState({}, '', '/'); setPathname('/') }}
       />
     }
-    if (showLogin) {
-      return <LoginPage
-        initialMode={loginMode}
-        onBack={() => setShowLogin(false)}
+    if (showLanding) {
+      return <LandingPage
+        onSignIn={() => { setLoginMode('signin'); setShowLanding(false) }}
+        onSignUp={() => { setLoginMode('signup'); setShowLanding(false) }}
       />
     }
-    return <LandingPage
-      onSignIn={() => { setLoginMode('signin'); setShowLogin(true) }}
-      onSignUp={() => { setLoginMode('signup'); setShowLogin(true) }}
+    return <LoginPage
+      initialMode={loginMode}
+      onLearnMore={() => setShowLanding(true)}
     />
   }
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-function LoginPage({ initialMode = 'signin', onBack }) {
+function LoginPage({ initialMode = 'signin', onBack, onLearnMore }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [mode, setMode] = useState(initialMode) // 'signin' | 'signup' | 'forgot'
@@ -95,6 +95,14 @@ function LoginPage({ initialMode = 'signin', onBack }) {
               ← Back to Sign In
             </button>
           </div>
+
+          {onLearnMore && (
+            <div style={s.learnMore}>
+              <button onClick={onLearnMore} style={s.learnMoreLink}>
+                New here? See what UCS does →
+              </button>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -164,6 +172,14 @@ function LoginPage({ initialMode = 'signin', onBack }) {
             {mode === 'signup' ? 'Sign In' : 'Sign Up'}
           </button>
         </div>
+
+        {onLearnMore && (
+          <div style={s.learnMore}>
+            <button onClick={onLearnMore} style={s.learnMoreLink}>
+              New here? See what UCS does →
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -217,7 +233,15 @@ const styles = {
     fontFamily: "'Barlow Condensed', sans-serif", fontWeight: '700',
     fontSize: '0.85rem', cursor: 'pointer', padding: '0 0 1rem',
     display: 'block', textAlign: 'left',
-  }
+  },
+  learnMore: {
+    textAlign: 'center', marginTop: '1rem',
+  },
+  learnMoreLink: {
+    background: 'none', border: 'none', cursor: 'pointer',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.8rem',
+    fontWeight: '700', color: '#7a8099', letterSpacing: '0.3px',
+  },
 }
 
 export default LoginPage
