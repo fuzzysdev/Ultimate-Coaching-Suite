@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import UserProfileModal from '../Components/UserProfileModal'
 import SubscriptionBanner from '../Components/SubscriptionBanner'
+import OnboardingModal from '../Components/OnboardingModal'
 import RostersPage from './RostersPage'
 import TryoutsPage from './TryoutsPage'
 import GameSheetPage from './GameSheetPage'
@@ -31,6 +32,7 @@ function MainShell({ session, accessStatus, onExitDemo }) {
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [toast,          setToast]          = useState(null)
   const [loadingOrgs,    setLoadingOrgs]    = useState(true)
+  const [showOnboarding, setShowOnboarding] = useState(!localStorage.getItem('ucs_onboarding_v1'))
   const isOnline = useOnlineStatus()
 
   const isDemoOrg = DEMO_ORG_ID && selectedOrg?.id === DEMO_ORG_ID
@@ -156,6 +158,13 @@ function MainShell({ session, accessStatus, onExitDemo }) {
   const s = styles
   return (
     <div style={s.container}>
+      {showOnboarding && (
+        <OnboardingModal onClose={() => {
+          localStorage.setItem('ucs_onboarding_v1', 'done')
+          setShowOnboarding(false)
+        }} />
+      )}
+
       {showProfileModal && (
         <UserProfileModal
           session={session}

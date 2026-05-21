@@ -36,3 +36,6 @@ dist-ssr
 
 # MCP server config (contains API tokens)
 .mcp.json
+
+.vercel
+.env*.local

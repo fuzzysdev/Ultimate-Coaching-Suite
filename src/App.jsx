@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
 import LoginPage from './pages/LoginPage'
+import LandingPage from './pages/LandingPage'
+import HowItWorksPage from './pages/HowItWorksPage'
 import MainShell from './pages/MainShell'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import SuperAdminPage from './pages/SuperAdminPage'
@@ -14,6 +16,9 @@ function App() {
   const [accessStatus, setAccessStatus] = useState(null)  // null | string
   const [checkingAccess, setCheckingAccess] = useState(false)
   const [demoMode,     setDemoMode]     = useState(false)
+  const [showLogin,    setShowLogin]    = useState(false)
+  const [loginMode,    setLoginMode]    = useState('signin') // 'signin' | 'signup'
+  const [pathname,     setPathname]     = useState(window.location.pathname)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -32,6 +37,12 @@ function App() {
       }
     )
     return () => subscription?.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    const onPop = () => setPathname(window.location.pathname)
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
   }, [])
 
   // Check access whenever we have a session and haven't checked yet
@@ -74,14 +85,31 @@ function App() {
   if (loading) return <LoadingScreen />
 
   // ── /superadmin route ──
-  if (window.location.pathname === '/superadmin') {
+  if (pathname === '/superadmin') {
     return session ? <SuperAdminPage session={session} /> : <LoginPage />
   }
 
   if (recoveryMode) return <ResetPasswordPage />
 
   // ── Not logged in ──
-  if (!session) return <LoginPage />
+  if (!session) {
+    if (pathname === '/how-it-works') {
+      return <HowItWorksPage
+        onSignIn={() => { setLoginMode('signin'); setShowLogin(true); window.history.pushState({}, '', '/'); setPathname('/') }}
+        onSignUp={() => { setLoginMode('signup'); setShowLogin(true); window.history.pushState({}, '', '/'); setPathname('/') }}
+      />
+    }
+    if (showLogin) {
+      return <LoginPage
+        initialMode={loginMode}
+        onBack={() => setShowLogin(false)}
+      />
+    }
+    return <LandingPage
+      onSignIn={() => { setLoginMode('signin'); setShowLogin(true) }}
+      onSignUp={() => { setLoginMode('signup'); setShowLogin(true) }}
+    />
+  }
 
   // ── Checking access ──
   // Keep showing the app during background re-checks to prevent MainShell unmount.

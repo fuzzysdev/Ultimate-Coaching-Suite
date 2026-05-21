@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-function LoginPage() {
+function LoginPage({ initialMode = 'signin', onBack }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [mode, setMode] = useState('signin') // 'signin' | 'signup' | 'forgot'
+  const [mode, setMode] = useState(initialMode) // 'signin' | 'signup' | 'forgot'
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState(null)
 
@@ -56,6 +56,9 @@ function LoginPage() {
     return (
       <div style={s.container}>
         <div style={s.card}>
+          {onBack && (
+            <button onClick={onBack} style={s.backLink}>← Back</button>
+          )}
           <h1 style={s.title}>Ultimate Coaching<br /><span style={s.titleAccent}>Suite</span></h1>
           <p style={s.subtitle}>Reset your password</p>
 
@@ -100,6 +103,9 @@ function LoginPage() {
   return (
     <div style={s.container}>
       <div style={s.card}>
+        {onBack && (
+          <button onClick={onBack} style={s.backLink}>← Back</button>
+        )}
         <h1 style={s.title}>Ultimate Coaching<br /><span style={s.titleAccent}>Suite</span></h1>
         <p style={s.subtitle}>{mode === 'signup' ? 'Create your account' : 'Sign in to continue'}</p>
 
@@ -205,6 +211,12 @@ const styles = {
   link: {
     background: 'none', border: 'none', color: '#00e5a0',
     fontWeight: '700', cursor: 'pointer', fontSize: '0.9rem'
+  },
+  backLink: {
+    background: 'none', border: 'none', color: '#7a8099',
+    fontFamily: "'Barlow Condensed', sans-serif", fontWeight: '700',
+    fontSize: '0.85rem', cursor: 'pointer', padding: '0 0 1rem',
+    display: 'block', textAlign: 'left',
   }
 }
 
