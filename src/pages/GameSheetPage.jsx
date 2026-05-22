@@ -380,8 +380,9 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   }
 
   const commitPoint = ({ scoredBy, pointGender, lineSnapshot, goalScorerId, assistPlayerId }) => {
-    // Release double-commit lockout immediately so undo/end-game remain accessible.
-    committingRef.current = false
+    // Release lockout after 800ms — deferred so that any synchronous rapid taps
+    // (or taps arriving within the same JS task) are still blocked.
+    setTimeout(() => { committingRef.current = false }, 800)
     // Read scores and point number from the ref — this is always current even if React
     // hasn't re-rendered yet, which prevents duplicate point_numbers and wrong score chains.
     const { ourScore: curOur, theirScore: curThem, nextPointNum } = nextStateRef.current
