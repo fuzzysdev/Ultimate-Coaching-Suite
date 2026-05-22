@@ -48,10 +48,25 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   const forceRefreshRef = useRef(null)
   const gameRef         = useRef(null)
   const openActiveRef   = useRef(null)
+  // Authoritative score state — updated synchronously inside commitPoint/adjustScore so
+  // rapid back-to-back commits never see stale React state (fixes race condition).
+  const nextStateRef    = useRef({ ourScore: 0, theirScore: 0, nextPointNum: 0 })
+  // Prevents double-commit when score buttons are tapped in rapid succession.
+  const committingRef   = useRef(false)
 
   const { subscribe, unsubscribe, disableLiveMode, checkLiveMode, refetchPoints } = useGameLiveMode({
     setLiveMode, setLiveCoaches, setOurTO, setTheirTO, setPoints,
   })
+
+  // Keep nextStateRef in sync whenever points changes (load, refetch, undo, live-mode push).
+  // The ref is also updated synchronously inside commitPoint/adjustScore to stay ahead of renders.
+  useEffect(() => {
+    nextStateRef.current = {
+      ourScore:     points.filter(p => p.scoredBy === 'us').length,
+      theirScore:   points.filter(p => p.scoredBy === 'them').length,
+      nextPointNum: points.length,
+    }
+  }, [points])
 
   // ── Wake Lock ─────────────────────────────────────────────────────────────
   const activeGameKey = roster?.id ? `ucs_active_game_${roster.id}` : null
@@ -263,8 +278,14 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   // ── Derived ────────────────────────────────────────────────────────────────
   const isSingle   = roster?.gender_type === 'single'
   const curIdx     = points.length
-  const ourScore   = points.length ? points[points.length - 1].ourScoreAfter   : 0
-  const theirScore = points.length ? points[points.length - 1].theirScoreAfter : 0
+  // Derive scores by counting — immune to any corruption in stored ourScoreAfter values.
+  const ourScore   = points.filter(p => p.scoredBy === 'us').length
+  const theirScore = points.filter(p => p.scoredBy === 'them').length
+  // Running cumulative totals for the score tracker rows — recomputed from scratch each render.
+  const runningScores = (() => {
+    let u = 0, t = 0
+    return points.map(p => { if (p.scoredBy === 'us') u++; else t++; return { our: u, their: t } })
+  })()
   const curGender  = setup ? getGenderForPoint(curIdx, setup.firstGender) : 'm'
   const lineSize   = setup?.lineSize || 7
   const halfCeil   = Math.ceil(lineSize / 2)
@@ -345,26 +366,36 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   }
 
   const recordPoint = (scoredBy) => {
-    if (!game) return
-    const newOur       = scoredBy === 'us'   ? ourScore + 1 : ourScore
-    const newTheir     = scoredBy === 'them' ? theirScore + 1 : theirScore
-    const pointNum     = curIdx
+    if (!game || readOnly || committingRef.current) return
+    committingRef.current = true
+    // Capture line and gender at tap time — these are point-specific snapshots.
     const pointGender  = curGender
     const lineSnapshot = [...curLine]
     if (scoredBy === 'us') {
-      setPendingPoint({ scoredBy, newOur, newTheir, pointNum, pointGender, lineSnapshot })
+      // Show goal/assist modal before committing; committingRef released in commitPoint.
+      setPendingPoint({ scoredBy, pointGender, lineSnapshot })
       return
     }
-    commitPoint({ scoredBy, newOur, newTheir, pointNum, pointGender, lineSnapshot, goalScorerId: null, assistPlayerId: null })
+    commitPoint({ scoredBy, pointGender, lineSnapshot, goalScorerId: null, assistPlayerId: null })
   }
 
-  const commitPoint = ({ scoredBy, newOur, newTheir, pointNum, pointGender, lineSnapshot, goalScorerId, assistPlayerId }) => {
+  const commitPoint = ({ scoredBy, pointGender, lineSnapshot, goalScorerId, assistPlayerId }) => {
+    // Release double-commit lockout immediately so undo/end-game remain accessible.
+    committingRef.current = false
+    // Read scores and point number from the ref — this is always current even if React
+    // hasn't re-rendered yet, which prevents duplicate point_numbers and wrong score chains.
+    const { ourScore: curOur, theirScore: curThem, nextPointNum } = nextStateRef.current
+    const newOur   = curOur  + (scoredBy === 'us'   ? 1 : 0)
+    const newTheir = curThem + (scoredBy === 'them' ? 1 : 0)
+    // Update ref synchronously before setPoints so back-to-back calls see the new values.
+    nextStateRef.current = { ourScore: newOur, theirScore: newTheir, nextPointNum: nextPointNum + 1 }
+
     setPoints(prev => [...prev, { gender: pointGender, scoredBy, ourScoreAfter: newOur, theirScoreAfter: newTheir }])
     setPendingPoint(null)
     scrollToCurrent()
     if (isDemoOrg) return
     const ptPayload = {
-      game_id: game.id, point_number: pointNum, gender: pointGender,
+      game_id: game.id, point_number: nextPointNum, gender: pointGender,
       scored_by: scoredBy, player_ids: lineSnapshot,
       our_score_after: newOur, their_score_after: newTheir,
       goal_scorer_id: goalScorerId || null,
@@ -374,7 +405,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     supabase.from('game_points').insert(ptPayload)
       .then(({ error }) => {
         if (error) console.error('game_points insert:', error)
-        else dequeuePendingPoint(game.id, pointNum)
+        else dequeuePendingPoint(game.id, nextPointNum)
       })
     supabase.from('games').update({ our_score: newOur, their_score: newTheir })
       .eq('id', game.id)
@@ -542,41 +573,44 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     }
   }
 
-  // ── Score override: adjust scores in DB ────────────────────────────────────
-  // Increment (+1): inserts a synthetic completed point so curIdx (= points.length)
-  //   advances and the gender ratio for the next point updates correctly.
-  // Decrement (-1): corrects the last point's cumulative tally without adding a point.
+  // ── Score override ─────────────────────────────────────────────────────────
+  // +1: inserts a synthetic completed point via nextStateRef — same race-proof
+  //     mechanism as commitPoint, so it can never collide with an in-flight normal
+  //     commit. curIdx advances, gender ratio and line tracking update correctly.
+  // -1: removes the most recent point regardless of team (same as Undo). Score
+  //     display is count-based so removing the row is the only correct approach.
   const adjustScore = (team, delta) => {
-    if (!game?.id || isDemoOrg || readOnly || points.length === 0) return
-    const last   = points[points.length - 1]
-    const newOur   = team === 'us'   ? Math.max(0, last.ourScoreAfter   + delta) : last.ourScoreAfter
-    const newThem  = team === 'them' ? Math.max(0, last.theirScoreAfter + delta) : last.theirScoreAfter
+    if (!game?.id || isDemoOrg || readOnly) return
 
     if (delta > 0) {
-      // Add a synthetic completed point so curIdx advances
-      const newPointNum = points.length
-      setPoints(prev => [...prev, { gender: curGender, scoredBy: team, ourScoreAfter: newOur, theirScoreAfter: newThem }])
+      if (committingRef.current) return   // block if a normal commit is in progress
+      committingRef.current = true
+      const { ourScore: curOur, theirScore: curThem, nextPointNum } = nextStateRef.current
+      const newOur  = curOur  + (team === 'us'   ? 1 : 0)
+      const newThem = curThem + (team === 'them' ? 1 : 0)
+      nextStateRef.current = { ourScore: newOur, theirScore: newThem, nextPointNum: nextPointNum + 1 }
+      committingRef.current = false
+
+      setPoints(prev => [...prev, {
+        gender: curGender, scoredBy: team,
+        ourScoreAfter: newOur, theirScoreAfter: newThem,
+      }])
       supabase.from('game_points')
         .upsert({
-          game_id: game.id, point_number: newPointNum, gender: curGender,
+          game_id: game.id, point_number: nextPointNum, gender: curGender,
           scored_by: team, player_ids: [],
           our_score_after: newOur, their_score_after: newThem,
           goal_scorer_id: null, assist_player_id: null,
         }, { onConflict: 'game_id,point_number' })
         .then(({ error }) => { if (error) console.error('adjustScore insert:', error) })
+      supabase.from('games').update({ our_score: newOur, their_score: newThem })
+        .eq('id', game.id)
+        .then(({ error }) => { if (error) console.error('adjustScore games:', error) })
     } else {
-      // Decrement: patch the last point's cumulative score
-      const idx    = points.length - 1
-      const newPts = [...points]; newPts[idx] = { ...last, ourScoreAfter: newOur, theirScoreAfter: newThem }
-      setPoints(newPts)
-      supabase.from('game_points')
-        .update({ our_score_after: newOur, their_score_after: newThem })
-        .eq('game_id', game.id).eq('point_number', idx)
-        .then(({ error }) => { if (error) console.error('adjustScore update:', error) })
+      // Decrement = undo last point. Display is count-derived so patching stored
+      // cumulative values has no effect; removing the row is the correct fix.
+      undoPoint()
     }
-    supabase.from('games').update({ our_score: newOur, their_score: newThem })
-      .eq('id', game.id)
-      .then(({ error }) => { if (error) console.error('adjustScore games:', error) })
   }
 
   // ── Reorder ────────────────────────────────────────────────────────────────
@@ -1013,7 +1047,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
             </>
           )}
 
-          {/* ── Score rows ── */}
+          {/* ── Score rows — values derived by counting scoredBy, never from stored cumulative ── */}
           <div style={{ ...S.row, borderTop: `1px solid ${lightGrid ? '#c8ccd8' : '#2a2f42'}`, marginTop: 2 }}>
             <div style={{ ...stickyName(lightGrid ? gt.headerBg : '#181c26'), height: SCORE_H,
               display: 'flex', alignItems: 'center', paddingLeft: 6, fontSize: 10, fontWeight: 800,
@@ -1022,7 +1056,8 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
               US
             </div>
             {colIndices.map(i => {
-              const pt = points[i]
+              const pt  = points[i]
+              const rs  = runningScores[i]
               return (
                 <div key={i} style={{ ...colCell(i), height: SCORE_H, lineHeight: SCORE_H + 'px',
                   fontSize: 11, fontWeight: pt?.scoredBy === 'us' ? 800 : 500,
@@ -1031,7 +1066,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
                     : pt ? (lightGrid ? '#1a1d28' : '#e8eaf0')
                     : (lightGrid ? '#c0c4d0' : '#2a2f42'),
                   fontFamily: "'Barlow Condensed', sans-serif" }}>
-                  {pt ? pt.ourScoreAfter : ''}
+                  {rs ? rs.our : ''}
                 </div>
               )
             })}
@@ -1043,7 +1078,8 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
               {setup.opponent.slice(0, 4).toUpperCase()}
             </div>
             {colIndices.map(i => {
-              const pt = points[i]
+              const pt  = points[i]
+              const rs  = runningScores[i]
               return (
                 <div key={i} style={{ ...colCell(i), height: SCORE_H, lineHeight: SCORE_H + 'px',
                   fontSize: 11, fontWeight: pt?.scoredBy === 'them' ? 800 : 500,
@@ -1051,7 +1087,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
                     : pt ? (lightGrid ? '#1a1d28' : '#e8eaf0')
                     : (lightGrid ? '#c0c4d0' : '#2a2f42'),
                   fontFamily: "'Barlow Condensed', sans-serif" }}>
-                  {pt ? pt.theirScoreAfter : ''}
+                  {rs ? rs.their : ''}
                 </div>
               )
             })}
