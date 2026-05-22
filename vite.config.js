@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import { resolve } from 'path'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -12,6 +13,14 @@ export default defineConfig(({ command }) => ({
   // Vite's dev server injects inline scripts for React Fast Refresh,
   // so no CSP headers are set here.
 
+  build: {
+    rollupOptions: {
+      input: {
+        main:       resolve(__dirname, 'index.html'),
+        scoreboard: resolve(__dirname, 'scoreboard.html'),
+      }
+    }
+  },
   plugins: [
     react(),
     VitePWA({
