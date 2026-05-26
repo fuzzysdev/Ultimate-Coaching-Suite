@@ -53,6 +53,16 @@ function App() {
     }
   }, [session])
 
+  // Re-check access when connectivity is restored so a user stranded on
+  // PaywallPage due to a network error gets let back in automatically.
+  useEffect(() => {
+    const onOnline = () => {
+      if (session && accessStatus === 'denied') checkAccess(session.user.id)
+    }
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
+  }, [session, accessStatus])
+
   // On return from Stripe Checkout, re-poll access after a short delay
   // to allow the webhook time to process
   useEffect(() => {
@@ -73,7 +83,10 @@ function App() {
       const { data, error } = await supabase.rpc('has_active_access', { p_user_id: userId })
       if (error) {
         console.error('Access check error:', error)
-        setAccessStatus('denied')
+        // Network/timeout errors must not override a valid existing status.
+        // A user who had access a moment ago still has access; only fall back
+        // to 'denied' if we've never successfully checked (accessStatus is null).
+        setAccessStatus(prev => prev ?? 'denied')
       } else {
         setAccessStatus(data)
       }

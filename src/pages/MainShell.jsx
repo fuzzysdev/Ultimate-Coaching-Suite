@@ -72,6 +72,13 @@ function MainShell({ session, accessStatus, onExitDemo }) {
       }
 
       setOrganizations(orgs)
+      // If the user has any non-demo org they are a returning user — suppress onboarding
+      // even if localStorage was cleared (e.g. iOS PWA storage purge, app reinstall).
+      const hasRealOrg = orgs.some(o => o.id !== DEMO_ORG_ID)
+      if (hasRealOrg && !localStorage.getItem('ucs_onboarding_v1')) {
+        localStorage.setItem('ucs_onboarding_v1', 'done')
+        setShowOnboarding(false)
+      }
       if (orgs.length > 0) {
         const savedOrgId = localStorage.getItem(`selectedOrg_${session.user.id}`)
         const savedOrg = savedOrgId && orgs.find(o => o.id === savedOrgId)

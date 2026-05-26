@@ -160,9 +160,29 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   }
 
   const openActiveGame = async (g, { showBanner = false } = {}) => {
-    const { data: gamePoints } = await supabase
+    const { data: gamePoints, error: gpFetchError } = await supabase
       .from('game_points').select('*')
       .eq('game_id', g.id).order('point_number')
+
+    // If the DB fetch failed (e.g. slow/dropped hotspot, auth token expiry) and we
+    // already have this game open in memory with points, preserve the current state.
+    // Without this guard, a failed fetch overwrites setPoints([]) and wipes the score.
+    if (gpFetchError) {
+      const alreadyOpen = gameRef.current?.id === g.id
+      const memPointCount = nextStateRef.current.nextPointNum
+      if (alreadyOpen && memPointCount > 0) {
+        console.warn('openActiveGame: game_points fetch failed — keeping in-memory state', gpFetchError)
+        // Still update timeouts in case they changed on another device
+        setOurTO(g.our_timeouts_used || 0)
+        setTheirTO(g.their_timeouts_used || 0)
+        if (showBanner) {
+          const nextGender = getGenderForPoint(memPointCount, g.first_gender)
+          setResumeBanner({ nextPt: memPointCount + 1, gender: nextGender, recovered: 0 })
+          setTimeout(() => setResumeBanner(null), 4500)
+        }
+        return
+      }
+    }
 
     // Re-insert any points committed locally but lost before reaching the DB
     const pending    = !isDemoOrg ? getPendingPoints(g.id) : []
@@ -170,14 +190,16 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     const toReinsert = pending
       .filter(p => !dbNums.has(p.point_number))
       .sort((a, b) => a.point_number - b.point_number)
-    const recovered = []
+    // Always show all pending points in the display, even if the upsert fails on a slow
+    // connection. Unconfirmed ones stay in the queue and get re-attempted next open.
+    let dbConfirmedCount = 0
     for (const pt of toReinsert) {
       const { error } = await supabase.from('game_points')
         .upsert(pt, { onConflict: 'game_id,point_number' })
-      if (!error) { recovered.push(pt); dequeuePendingPoint(g.id, pt.point_number) }
+      if (!error) { dbConfirmedCount++; dequeuePendingPoint(g.id, pt.point_number) }
     }
 
-    const allGamePoints = [...(gamePoints || []), ...recovered]
+    const allGamePoints = [...(gamePoints || []), ...toReinsert]
       .sort((a, b) => a.point_number - b.point_number)
 
     const restoredSetup = {
@@ -239,7 +261,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
 
     if (showBanner) {
       const nextGender = getGenderForPoint(restoredPoints.length, g.first_gender)
-      setResumeBanner({ nextPt: restoredPoints.length + 1, gender: nextGender, recovered: recovered.length })
+      setResumeBanner({ nextPt: restoredPoints.length + 1, gender: nextGender, recovered: dbConfirmedCount })
       setTimeout(() => setResumeBanner(null), 4500)
     }
   }
@@ -551,19 +573,25 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       supabase.from('game_points').select('*').eq('game_id', game.id).order('point_number'),
     ])
     if (!freshPoints) return
-    const newPoints = freshPoints.map(gp => ({
+    // Merge any in-flight points from the local queue that haven't reached DB yet.
+    // Without this, tapping "Sync from DB" during a slow connection wipes pending points.
+    const pending   = getPendingPoints(game.id)
+    const dbNums    = new Set(freshPoints.map(gp => gp.point_number))
+    const toMerge   = pending.filter(p => !dbNums.has(p.point_number))
+    const allPoints = [...freshPoints, ...toMerge].sort((a, b) => a.point_number - b.point_number)
+    const newPoints = allPoints.map(gp => ({
       gender:          gp.gender,
       scoredBy:        gp.scored_by,
       ourScoreAfter:   gp.our_score_after,
       theirScoreAfter: gp.their_score_after,
     }))
     const newLines = {}
-    freshPoints.forEach(gp => { newLines[gp.point_number] = new Set(gp.player_ids || []) })
+    allPoints.forEach(gp => { newLines[gp.point_number] = new Set(gp.player_ids || []) })
     setPoints(newPoints)
     setLines(prev => {
       const merged = { ...newLines }
       Object.entries(prev).forEach(([k, s]) => {
-        if (Number(k) >= freshPoints.length) merged[k] = s
+        if (Number(k) >= allPoints.length) merged[k] = s
       })
       return merged
     })
