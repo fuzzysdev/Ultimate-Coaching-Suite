@@ -251,7 +251,7 @@ function ScoreHistory({ points, team1Color, team2Color, isMixed }) {
             padding: '0 5px 0 4px', flexShrink: 0,
           }}>
             {dotColor && (
-              <div style={{ width: 4, height: 4, borderRadius: '50%', background: dotColor }} />
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
             )}
             <span style={{
               fontSize: 12, fontWeight: 900, color: '#b0b8d0',
@@ -663,7 +663,7 @@ export default function ScoreboardPage() {
     : '— choosing'
   const genderColor = curGender ? GENDER_COLOR[curGender] : '#4a5068'
   const topBarBg    = curGender === 'm' ? '#1a4a8c'
-                    : curGender === 'f' ? '#8c1a50'
+                    : curGender === 'f' ? '#c0346e'
                     : '#0a0d14'
 
   // −1 for a specific team: undo only if that team scored the last point
