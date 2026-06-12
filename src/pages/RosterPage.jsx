@@ -18,7 +18,7 @@ function RosterPage({ roster, onBack, isDemoOrg }) {
     try {
       setLoading(true)
       const { data, error } = await supabase
-        .from('players').select('id, name, grade, gender, position, created_at')
+        .from('players').select('id, name, grade, gender, position, o_d_line, created_at')
         .eq('roster_id', roster.id).order('name', { ascending: true })
       if (error) throw error
       setPlayers(data || [])
@@ -36,6 +36,7 @@ function RosterPage({ roster, onBack, isDemoOrg }) {
       grade: playerData.grade,
       gender: playerData.gender,
       position: playerData.position || null,
+      o_d_line: playerData.oDLine || null,
       roster_id: roster.id
     })
     if (error) throw error
@@ -50,6 +51,7 @@ function RosterPage({ roster, onBack, isDemoOrg }) {
       grade: playerData.grade,
       gender: playerData.gender,
       position: playerData.position || null,
+      o_d_line: playerData.oDLine || null,
     }).eq('id', editingPlayer.id)
     if (error) throw error
     setEditingPlayer(null)
@@ -135,7 +137,7 @@ function RosterPage({ roster, onBack, isDemoOrg }) {
           <table style={s.table}>
             <thead>
               <tr>
-                {['Name', ...(roster.age_group !== 'adult' ? ['Grade'] : []), 'Gender', 'Position', ''].map(h => (
+                {['Name', ...(roster.age_group !== 'adult' ? ['Grade'] : []), 'Gender', 'Position', 'Line', ''].map(h => (
                   <th key={h} style={{ ...s.th, ...(h === '' ? { textAlign: 'right' } : {}) }}>{h}</th>
                 ))}
               </tr>
@@ -162,6 +164,17 @@ function RosterPage({ roster, onBack, isDemoOrg }) {
                     {player.position ? (
                       <span style={{ ...s.badge, background: 'rgba(120,100,255,0.15)', color: '#a89aff' }}>
                         {{ h: 'Handler', c: 'Cutter', b: 'Hybrid', e: 'Either' }[player.position] || player.position}
+                      </span>
+                    ) : <span style={s.muted}>—</span>}
+                  </td>
+                  <td style={s.td}>
+                    {player.o_d_line ? (
+                      <span style={{
+                        ...s.badge,
+                        background: player.o_d_line === 'O' ? 'rgba(0,229,160,0.15)' : 'rgba(255,152,0,0.15)',
+                        color: player.o_d_line === 'O' ? '#00e5a0' : '#f0a500'
+                      }}>
+                        {player.o_d_line === 'O' ? 'O-Line' : 'D-Line'}
                       </span>
                     ) : <span style={s.muted}>—</span>}
                   </td>

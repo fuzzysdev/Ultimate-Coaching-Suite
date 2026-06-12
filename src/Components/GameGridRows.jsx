@@ -1,4 +1,4 @@
-import { COL_W, POS, cellFill } from '../lib/gameSheetHelpers'
+import { COL_W, POS, O_D_LINE_STYLE, cellFill } from '../lib/gameSheetHelpers'
 
 export function SectionRow({ label, color, stickyName, colIndices, colBgFn, curIdx, secH, gt, htAfterPoint }) {
   const sectionTint = `${color}14`
@@ -48,13 +48,25 @@ export function PlayerRow({ player, colIndices, lines, curIdx, stickyName, colCe
             color: status === 'away' ? gt.awayColor : '#f0a500' }}>
             {status === 'away' ? 'AWAY' : 'INJ'}
           </span>
-        ) : player.position ? (
-          <span style={{ fontSize: 9, fontWeight: 700, background: gt.posTagBg, color: gt.posTagColor,
-            padding: '1px 3px', borderRadius: 3, flexShrink: 0,
-            fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5 }}>
-            {POS[player.position] || player.position}
-          </span>
-        ) : null}
+        ) : (
+          <>
+            {player.position && (
+              <span style={{ fontSize: 9, fontWeight: 700, background: gt.posTagBg, color: gt.posTagColor,
+                padding: '1px 3px', borderRadius: 3, flexShrink: 0,
+                fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5 }}>
+                {POS[player.position] || player.position}
+              </span>
+            )}
+            {O_D_LINE_STYLE[player.o_d_line] && (
+              <span style={{ fontSize: 9, fontWeight: 800, flexShrink: 0, padding: '1px 3px', borderRadius: 3,
+                fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.5,
+                background: O_D_LINE_STYLE[player.o_d_line].bg,
+                color: O_D_LINE_STYLE[player.o_d_line].color }}>
+                {O_D_LINE_STYLE[player.o_d_line].label}
+              </span>
+            )}
+          </>
+        )}
       </div>
 
       {colIndices.map(i => {

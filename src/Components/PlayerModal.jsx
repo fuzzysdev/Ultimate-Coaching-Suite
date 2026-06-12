@@ -8,6 +8,10 @@ const POSITIONS = [
   { value: 'b', label: 'Hybrid' },
   { value: 'e', label: 'Either' },
 ]
+const LINES = [
+  { value: 'O', label: 'O-Line' },
+  { value: 'D', label: 'D-Line' },
+]
 
 function PlayerModal({ player, roster, onSave, onClose, isDemoOrg }) {
   const isAdult = roster?.age_group === 'adult'
@@ -15,6 +19,7 @@ function PlayerModal({ player, roster, onSave, onClose, isDemoOrg }) {
   const [grade, setGrade] = useState('')
   const [gender, setGender] = useState('')
   const [position, setPosition] = useState('')
+  const [oDLine, setODLine] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
@@ -24,6 +29,7 @@ function PlayerModal({ player, roster, onSave, onClose, isDemoOrg }) {
       setGrade(player.grade || '')
       setGender(player.gender || '')
       setPosition(player.position || '')
+      setODLine(player.o_d_line || '')
     }
   }, [player])
 
@@ -34,7 +40,7 @@ function PlayerModal({ player, roster, onSave, onClose, isDemoOrg }) {
     setError(null)
     setSaving(true)
     try {
-      await onSave({ name: name.trim(), grade: isAdult ? '' : grade, gender, position })
+      await onSave({ name: name.trim(), grade: isAdult ? '' : grade, gender, position, oDLine })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -76,12 +82,21 @@ function PlayerModal({ player, roster, onSave, onClose, isDemoOrg }) {
               </select>
             </div>
           </div>
-          <div style={s.field}>
-            <label style={s.label}>Position <span style={{ color: '#4a5068', fontWeight: 400 }}>(optional)</span></label>
-            <select value={position} onChange={e => setPosition(e.target.value)}>
-              <option value="">-- Select --</option>
-              {POSITIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-            </select>
+          <div style={s.row}>
+            <div style={s.field}>
+              <label style={s.label}>Position <span style={{ color: '#4a5068', fontWeight: 400 }}>(optional)</span></label>
+              <select value={position} onChange={e => setPosition(e.target.value)}>
+                <option value="">-- Select --</option>
+                {POSITIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </select>
+            </div>
+            <div style={s.field}>
+              <label style={s.label}>Line <span style={{ color: '#4a5068', fontWeight: 400 }}>(optional)</span></label>
+              <select value={oDLine} onChange={e => setODLine(e.target.value)}>
+                <option value="">-- Either --</option>
+                {LINES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+              </select>
+            </div>
           </div>
           <button type="submit" disabled={saving} style={s.saveBtn}>
             {saving ? 'Saving...' : player ? 'Save Changes' : 'Add Player'}

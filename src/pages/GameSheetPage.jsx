@@ -130,7 +130,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     if (!roster?.id) return
     setLoadingPlayers(true)
     const { data } = await supabase
-      .from('players').select('id, name, gender, position, sort_order')
+      .from('players').select('id, name, gender, position, o_d_line, sort_order')
       .eq('roster_id', roster.id)
       .order('sort_order', { ascending: true, nullsFirst: false })
       .order('name')

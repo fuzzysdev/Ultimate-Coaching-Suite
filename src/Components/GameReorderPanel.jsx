@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { POS } from '../lib/gameSheetHelpers'
+import { POS, O_D_LINE_STYLE } from '../lib/gameSheetHelpers'
 
 const ROW_H = 44
 
@@ -106,6 +106,13 @@ export default function ReorderGroup({ players, label, color, gender, onReorder 
                 fontWeight: 700, background: '#1f2435', color: '#5a6280',
                 padding: '2px 4px', borderRadius: 3, letterSpacing: 0.5, pointerEvents: 'none' }}>
                 {POS[p.position] || p.position}
+              </span>
+            )}
+            {O_D_LINE_STYLE[p.o_d_line] && (
+              <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 9,
+                fontWeight: 800, background: O_D_LINE_STYLE[p.o_d_line].bg, color: O_D_LINE_STYLE[p.o_d_line].color,
+                padding: '2px 4px', borderRadius: 3, letterSpacing: 0.5, pointerEvents: 'none' }}>
+                {O_D_LINE_STYLE[p.o_d_line].label}
               </span>
             )}
           </div>

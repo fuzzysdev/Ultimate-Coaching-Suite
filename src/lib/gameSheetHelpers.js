@@ -5,7 +5,7 @@ export function getGenderForPoint(i, first) {
   return Math.floor((i - 1) / 2) % 2 === 0 ? other : first
 }
 
-export const NAME_W  = 90
+export const NAME_W  = 104
 export const COL_W   = 44
 export const HDR_H   = 24
 export const SEC_H   = 20
@@ -14,6 +14,11 @@ export const SCORE_H = 24
 export const MAX_TO  = 3
 
 export const POS = { h: 'H', c: 'C', b: 'Hy', e: 'E' }
+
+export const O_D_LINE_STYLE = {
+  O: { label: 'O', bg: 'rgba(0,229,160,0.18)', color: '#00e5a0' },
+  D: { label: 'D', bg: 'rgba(240,165,0,0.2)', color: '#f0a500' },
+}
 
 export function colBg(colIdx, current, light = false) {
   if (colIdx === current) return light ? 'rgba(0,180,120,0.10)' : 'rgba(0,229,160,0.06)'
