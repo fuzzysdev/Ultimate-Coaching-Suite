@@ -29,6 +29,25 @@ function hexToRgb(hex) {
   return `${r},${g},${b}`
 }
 
+// ── Local Storage — active game + completed game history ─────────────────────
+const ACTIVE_KEY  = 'ucs_sb_active'
+const HISTORY_KEY = 'ucs_sb_history'
+const HISTORY_MAX = 50
+
+function loadActiveGame() {
+  try {
+    const raw = localStorage.getItem(ACTIVE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+
 // ── Color Swatch ───────────────────────────────────────────────────────────────
 function ColorSwatch({ color, onChange }) {
   return (
@@ -54,6 +73,7 @@ function SetupScreen({ onStart }) {
   const [firstGender, setFirstGender] = useState('m')
   const [t1Action,    setT1Action]    = useState('pull')
   const [t1Side,      setT1Side]      = useState('left')
+  const [showHistory, setShowHistory] = useState(false)
 
   const colorConflict = team1Color.toLowerCase() === team2Color.toLowerCase()
   const canStart      = team1Name.trim() && team2Name.trim() && !colorConflict
@@ -145,7 +165,88 @@ function SetupScreen({ onStart }) {
         >
           ▶  Start Game
         </button>
+
+        <button style={s.historyBtn} onClick={() => setShowHistory(true)}>
+          Previous Games
+        </button>
       </div>
+
+      {showHistory && <HistoryModal onClose={() => setShowHistory(false)} />}
+    </div>
+  )
+}
+
+// ── Previous Games (history) ──────────────────────────────────────────────────
+function HistoryModal({ onClose }) {
+  const [history, setHistory] = useState(() => loadHistory())
+
+  const handleDelete = (id) => {
+    setHistory(prev => {
+      const next = prev.filter(g => g.id !== id)
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)) } catch { /* storage full — silently skip */ }
+      return next
+    })
+  }
+
+  const handleClearAll = () => {
+    try { localStorage.removeItem(HISTORY_KEY) } catch { /* storage unavailable */ }
+    setHistory([])
+  }
+
+  return (
+    <Overlay style={{ alignItems: 'flex-start', overflowY: 'auto' }}>
+      <div style={SS.historyCard}>
+        <div style={SS.historyHeader}>Previous Games</div>
+        {history.length === 0 ? (
+          <div style={SS.historyEmpty}>No completed games yet</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
+            {history.map(game => (
+              <HistoryRow key={game.id} game={game} onDelete={() => handleDelete(game.id)} />
+            ))}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 10, width: '100%', marginTop: 20 }}>
+          {history.length > 0 && (
+            <button onClick={handleClearAll} style={{ ...ghostBtn, flex: 1 }}>Clear All</button>
+          )}
+          <button onClick={onClose} style={{ ...primaryBtn, flex: 1 }}>Close</button>
+        </div>
+      </div>
+    </Overlay>
+  )
+}
+
+function HistoryRow({ game, onDelete }) {
+  const date = new Date(game.date)
+  const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const timeStr = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  const spiritTotal = game.spiritRatings
+    ? Object.values(game.spiritRatings).reduce((a, b) => a + b, 0)
+    : null
+  const t1c = contrastColor(game.team1Color)
+  const t2c = contrastColor(game.team2Color)
+  const t1Win = game.team1Score > game.team2Score
+  const t2Win = game.team2Score > game.team1Score
+
+  return (
+    <div style={SS.historyRow}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={SS.historyDate}>{dateStr} · {timeStr}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+          <span style={{ ...SS.historyTeamChip, background: game.team1Color, color: t1c, fontWeight: t1Win ? 900 : 700 }}>
+            {game.team1Name}
+          </span>
+          <span style={SS.historyScore}>{game.team1Score} – {game.team2Score}</span>
+          <span style={{ ...SS.historyTeamChip, background: game.team2Color, color: t2c, fontWeight: t2Win ? 900 : 700 }}>
+            {game.team2Name}
+          </span>
+        </div>
+        {spiritTotal !== null && (
+          <div style={SS.historySpirit}>Spirit: {spiritTotal} / 20</div>
+        )}
+      </div>
+      <button onClick={onDelete} style={SS.historyDelete}>✕</button>
     </div>
   )
 }
@@ -413,7 +514,7 @@ function EndModal({ config, team1Score, team2Score, onNewGame }) {
               Spirit: <span style={{ color: '#00e5a0', fontWeight: 900 }}>{total} / 20</span>
             </div>
           )}
-          <button onClick={onNewGame} style={primaryBtn}>New Game</button>
+          <button onClick={() => onNewGame(ratings)} style={primaryBtn}>New Game</button>
         </ModalCard>
       </Overlay>
     )
@@ -452,7 +553,7 @@ function EndModal({ config, team1Score, team2Score, onNewGame }) {
             style={{ ...primaryBtn, flex: 1, opacity: allRated ? 1 : 0.4 }}>
             Done
           </button>
-          <button onClick={onNewGame} style={ghostBtn}>Skip</button>
+          <button onClick={() => onNewGame(null)} style={ghostBtn}>Skip</button>
         </div>
       </div>
     </Overlay>
@@ -615,13 +716,25 @@ function CtrlBtn({ onClick, disabled, label, danger }) {
 
 // ── Main Scoreboard Page ───────────────────────────────────────────────────────
 export default function ScoreboardPage() {
-  const [phase,       setPhase]       = useState('setup')
-  const [config,      setConfig]      = useState(null)
-  const [points,      setPoints]      = useState([])
-  const [pullTeam,    setPullTeam]    = useState(null)
-  const [ruleBGender, setRuleBGender] = useState(null)
+  const [phase,       setPhase]       = useState(() => loadActiveGame()?.phase || 'setup')
+  const [config,      setConfig]      = useState(() => loadActiveGame()?.config || null)
+  const [points,      setPoints]      = useState(() => loadActiveGame()?.points || [])
+  const [pullTeam,    setPullTeam]    = useState(() => loadActiveGame()?.pullTeam || null)
+  const [ruleBGender, setRuleBGender] = useState(() => loadActiveGame()?.ruleBGender || null)
   const [editOpen,    setEditOpen]    = useState(false)
   const [isLandscape, setIsLandscape] = useState(window.innerWidth > window.innerHeight)
+
+  // Persist the in-progress game so a page refresh doesn't lose it.
+  // Cleared once the user starts a new game from the setup screen.
+  useEffect(() => {
+    if (phase === 'setup') {
+      try { localStorage.removeItem(ACTIVE_KEY) } catch { /* storage unavailable */ }
+      return
+    }
+    try {
+      localStorage.setItem(ACTIVE_KEY, JSON.stringify({ phase, config, points, pullTeam, ruleBGender }))
+    } catch { /* storage full — silently skip */ }
+  }, [phase, config, points, pullTeam, ruleBGender])
 
   // Swap PWA manifest so "Add to Home Screen" installs as "UCS Scoreboard"
   useEffect(() => {
@@ -714,7 +827,28 @@ export default function ScoreboardPage() {
     setEditOpen(false)
   }
 
-  const handleNewGame = () => { setPhase('setup'); setConfig(null); setPoints([]) }
+  const handleNewGame = (spiritRatings) => {
+    if (config && points.length > 0) {
+      const game = {
+        id: Date.now(),
+        date: new Date().toISOString(),
+        team1Name: config.team1Name, team2Name: config.team2Name,
+        team1Color: config.team1Color, team2Color: config.team2Color,
+        genderMode: config.genderMode,
+        team1Score, team2Score,
+        points,
+        spiritRatings: spiritRatings || null,
+      }
+      try {
+        const history = loadHistory()
+        history.unshift(game)
+        if (history.length > HISTORY_MAX) history.length = HISTORY_MAX
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(history))
+      } catch { /* storage full — silently skip */ }
+    }
+    try { localStorage.removeItem(ACTIVE_KEY) } catch { /* storage unavailable */ }
+    setPhase('setup'); setConfig(null); setPoints([])
+  }
 
   if (phase === 'setup') return <SetupScreen onStart={handleStart} />
 
@@ -824,5 +958,47 @@ const SS = {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 17, fontWeight: 900,
     padding: '14px 0', textTransform: 'uppercase', letterSpacing: 1, cursor: 'pointer',
     marginTop: 4, touchAction: 'manipulation',
+  },
+  historyBtn: {
+    width: '100%', background: 'none', border: 'none', color: '#7a8099',
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 700,
+    padding: '14px 0 0', textTransform: 'uppercase', letterSpacing: 1, cursor: 'pointer',
+    touchAction: 'manipulation', textDecoration: 'underline',
+  },
+  historyCard: {
+    background: '#181c26', border: '1px solid #2a2f42', borderRadius: 16,
+    padding: '28px 24px', width: '100%', maxWidth: 440,
+    margin: '20px auto', fontFamily: "'Barlow Condensed', sans-serif",
+  },
+  historyHeader: {
+    fontSize: 22, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1.5,
+    color: '#e8eaf0', marginBottom: 20, textAlign: 'center',
+  },
+  historyEmpty: {
+    fontSize: 13, color: '#4a5068', textAlign: 'center',
+    textTransform: 'uppercase', letterSpacing: 1, padding: '20px 0',
+  },
+  historyRow: {
+    display: 'flex', alignItems: 'center', gap: 10,
+    background: '#0f1117', border: '1px solid #2a2f42', borderRadius: 10,
+    padding: '10px 12px',
+  },
+  historyDate: {
+    fontSize: 11, color: '#4a5068', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700,
+  },
+  historyTeamChip: {
+    fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5,
+    padding: '3px 10px', borderRadius: 20,
+  },
+  historyScore: {
+    fontSize: 15, fontWeight: 900, color: '#e8eaf0',
+  },
+  historySpirit: {
+    fontSize: 11, color: '#7a8099', marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5,
+  },
+  historyDelete: {
+    background: 'none', border: 'none', color: '#4a5068',
+    fontSize: 16, fontWeight: 900, cursor: 'pointer', padding: '4px 6px',
+    flexShrink: 0, touchAction: 'manipulation',
   },
 }
