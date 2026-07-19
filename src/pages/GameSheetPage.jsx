@@ -10,7 +10,7 @@ import ReorderGroup from '../Components/GameReorderPanel'
 import { useGameLiveMode } from '../hooks/useGameLiveMode'
 import {
   getGenderForPoint, NAME_W, COL_W, HDR_H, SEC_H, ROW_H, SCORE_H, MAX_TO,
-  colBg, buildTheme,
+  colBg, buildTheme, sortPlayersByPosition,
 } from '../lib/gameSheetHelpers'
 
 export default function GameSheetPage({ org, roster, isDemoOrg }) {
@@ -376,6 +376,12 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     })
   }
 
+  // Clears only the upcoming (not-yet-played) point's pre-built line — never a
+  // recorded point, since curIdx already blocks edits to played columns.
+  const clearCurrentLine = () => {
+    setLines(prev => ({ ...prev, [curIdx]: new Set() }))
+  }
+
   const cycleStatus = (playerId) => {
     const cur = playerStatus[playerId]
     const next = !cur ? 'away' : cur === 'away' ? 'injured' : null
@@ -679,6 +685,22 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     ).catch(err => console.error('saveOrder error:', err))
   }
 
+  // Only touches the local playerOrder buffer — same as a manual drag, nothing
+  // is written to the DB or the live grid until saveOrder() runs.
+  const sortByPosition = () => {
+    setPlayerOrder(prev => {
+      if (isSingle) return sortPlayersByPosition(prev)
+      const fems = sortPlayersByPosition(prev.filter(p => p.gender === 'Female'))
+      const mens = sortPlayersByPosition(prev.filter(p => p.gender === 'Male'))
+      const result = [...prev]
+      let fi = 0, mi = 0
+      result.forEach((p, i) => {
+        result[i] = p.gender === 'Female' ? fems[fi++] : mens[mi++]
+      })
+      return result
+    })
+  }
+
   const cancelReorder = () => setReorderMode(false)
 
   // ── Live mode toggle ───────────────────────────────────────────────────────
@@ -878,6 +900,9 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
                 {isSingle ? `${curLine.size}/${lineSize}` : `${selF}/${curFNeed}F · ${selM}/${curMNeed}M`}
               </span>
             )}
+            {!readOnly && curLine.size > 0 && (
+              <button onClick={clearCurrentLine} style={S.clearLineBtn} title="Clear next line">✕ Clear</button>
+            )}
             {readOnly && (
               <span style={S.infoText}>
                 {new Date(game.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -948,6 +973,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
           <div style={S.reorderHeader}>
             <span style={S.reorderTitle}>Reorder Players</span>
             <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={sortByPosition} style={S.reorderSortBtn}>Sort by Position</button>
               <button onClick={cancelReorder} style={S.reorderCancelBtn}>Cancel</button>
               <button onClick={saveOrder} style={S.reorderDoneBtn}>Save</button>
             </div>
@@ -1233,6 +1259,12 @@ const S = {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, fontWeight: 800,
     color: over ? '#ff4d6d' : ok ? '#00e5a0' : '#7a8099'
   }),
+  clearLineBtn: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 10, fontWeight: 800,
+    color: '#ff4d6d', background: 'transparent', border: '1px solid #ff4d6d44',
+    borderRadius: 6, padding: '2px 8px', cursor: 'pointer',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+  },
 
   actionBar: {
     display: 'flex', gap: 6, padding: '6px 10px',
@@ -1300,6 +1332,12 @@ const S = {
   reorderTitle: {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 900,
     color: '#e8eaf0', textTransform: 'uppercase', letterSpacing: 1.5,
+  },
+  reorderSortBtn: {
+    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 800,
+    color: '#00e5a0', background: 'transparent', border: '1px solid #00e5a044',
+    borderRadius: 7, padding: '5px 14px', cursor: 'pointer',
+    textTransform: 'uppercase', letterSpacing: 0.5,
   },
   reorderCancelBtn: {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 800,

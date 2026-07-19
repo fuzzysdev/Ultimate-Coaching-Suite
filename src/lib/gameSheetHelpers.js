@@ -15,6 +15,17 @@ export const MAX_TO  = 3
 
 export const POS = { h: 'H', c: 'C', b: 'Hy', e: 'E' }
 
+const POS_SORT_RANK = { h: 0, c: 1, b: 2, e: 3 }
+
+// Stable sort — ties (same position, or no position) keep their current relative order.
+export function sortPlayersByPosition(players) {
+  return [...players].sort((a, b) => {
+    const ra = POS_SORT_RANK[a.position] ?? 99
+    const rb = POS_SORT_RANK[b.position] ?? 99
+    return ra - rb
+  })
+}
+
 export const O_D_LINE_STYLE = {
   O: { label: 'O', bg: 'rgba(0,229,160,0.18)', color: '#00e5a0' },
   D: { label: 'D', bg: 'rgba(240,165,0,0.2)', color: '#f0a500' },
