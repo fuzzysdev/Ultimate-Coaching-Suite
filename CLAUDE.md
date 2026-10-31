@@ -26,6 +26,8 @@ src/
     TryoutSessionPage.jsx  # Tryout ranking drag-and-drop
     GameSheetPage.jsx  # Live game tracking grid (imports from Components + lib below)
     Attendance.jsx     # Attendance tracker
+    PracticesPage.jsx  # Practice list (upcoming/previous), new/copy practice, drill library entry
+    PracticeEditor.jsx # Practice plan: blocks, time budget, reminders, check-in, run mode
     SuperAdminPage.jsx # Super-admin org management (/superadmin route)
     PlaceholderPage.jsx
   Components/
@@ -40,9 +42,15 @@ src/
     GameInfoModal.jsx     # In-game settings: times, halftime, break timer, abandon
     GameGridRows.jsx      # SectionRow, PlayerRow, EmptySection — grid row sub-components
     GameReorderPanel.jsx  # ReorderGroup — drag-to-reorder player list
+    PracticeSetupDialog.jsx  # New practice / edit details (date, time, duration, copy-from)
+    PracticeCheckInPanel.jsx # Slide-in player check-in → attendance (cell-level RPCs)
+    RunPracticeMode.jsx      # Full-screen sideline block timer (timestamp-based, resumable)
+    DrillLibraryModal.jsx    # Org-private drill library browse/pick/manage
+    DrillFormModal.jsx       # Create/edit drill, "Save as drill" from a block
   lib/
     supabase.js           # Supabase client (reads VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY)
     offlineStore.js       # localStorage cache + write queue (prefix: ucs_)
+    practiceHelpers.js    # Block types, offline-safe practice/drill saves, attendance RPC helpers
     gameSheetHelpers.js   # Shared constants (NAME_W, COL_W, etc.) + pure helpers
                           #   (getGenderForPoint, colBg, cellFill, buildTheme, POS)
   hooks/
@@ -108,7 +116,9 @@ src/
 | `players` | id, name, gender (`Male`\|`Female`), grade, position (`h`\|`c`\|`b`\|`e`), roster_id |
 | `tryouts` | id, organization_id, name |
 | `tryout_players` | tryout_id, player fields + ranking data |
-| `attendance_data` | roster_id, practices (text[]), records (jsonb) |
+| `attendance_data` | roster_id, practices (text[]), records (jsonb) — practice check-in writes single cells via `attendance_set` / `attendance_add_practice` / `attendance_rename_practice` RPCs |
+| `practices` | id (client UUID), organization_id, roster_id, practice_date, start_time, duration_min, location, focus, blocks (jsonb), reminders (jsonb), attendance_label |
+| `drills` | id (client UUID), organization_id, name, description, block_type, default_duration, tags |
 | `games` | id, organization_id, roster_id, opponent, scores, status |
 | `game_points` | game_id, point_number, gender, scored_by, player_ids |
 | `spirit_ratings` | game_id, 5 integer scores |

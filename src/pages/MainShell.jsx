@@ -6,6 +6,8 @@ import UserProfileModal from '../Components/UserProfileModal'
 import SubscriptionBanner from '../Components/SubscriptionBanner'
 import OnboardingModal from '../Components/OnboardingModal'
 import RostersPage from './RostersPage'
+import PracticesPage from './PracticesPage'
+import { practicesCacheKey, todayStr, formatPracticeDate } from '../lib/practiceHelpers'
 import TryoutsPage from './TryoutsPage'
 import GameSheetPage from './GameSheetPage'
 import AttendancePage from './Attendance'
@@ -17,6 +19,7 @@ const DEMO_ORG_ID = import.meta.env.VITE_DEMO_ORG_ID || null
 
 const NAV_ITEMS = [
   { key: 'rosters',     label: 'Rosters' },
+  { key: 'practices',   label: 'Practices' },
   { key: 'tryouts',     label: 'Tryouts' },
   { key: 'gamesheet',   label: 'Game Sheet' },
   { key: 'attendance',  label: 'Attendance' },
@@ -34,12 +37,27 @@ function MainShell({ session, accessStatus, onExitDemo }) {
   const [toast,          setToast]          = useState(null)
   const [loadingOrgs,    setLoadingOrgs]    = useState(true)
   const [showOnboarding, setShowOnboarding] = useState(!localStorage.getItem('ucs_onboarding_v1'))
+  const [nextPractice,   setNextPractice]   = useState(null)
+  const [openPracticeId, setOpenPracticeId] = useState(null)
   const isOnline = useOnlineStatus()
 
   const isDemoOrg = DEMO_ORG_ID && selectedOrg?.id === DEMO_ORG_ID
 
   useEffect(() => { fetchOrganizations() }, [])
   useEffect(() => { if (selectedOrg) fetchRosters(selectedOrg.id) }, [selectedOrg])
+
+  // Next practice with open reminders — shown as a banner on the other tabs.
+  // Re-checked on tab switch so it reflects reminders ticked off in the planner.
+  useEffect(() => {
+    if (!selectedRoster?.id) { setNextPractice(null); return }
+    const pick = (list) => (list || [])
+      .filter(p => p.practice_date >= todayStr() && p.reminders?.some(r => !r.done))
+      .sort((a, b) => a.practice_date.localeCompare(b.practice_date))[0] || null
+    setNextPractice(pick(offlineStore.getCache(practicesCacheKey(selectedRoster.id))))
+    supabase.from('practices').select('id, practice_date, reminders')
+      .eq('roster_id', selectedRoster.id).gte('practice_date', todayStr())
+      .then(({ data, error }) => { if (!error) setNextPractice(pick(data)) })
+  }, [selectedRoster?.id, currentApp])
 
   const showToast = (msg) => {
     setToast(msg)
@@ -163,6 +181,9 @@ function MainShell({ session, accessStatus, onExitDemo }) {
     switch (currentApp) {
       case 'rosters':
         return <RostersPage org={selectedOrg} session={session} isDemoOrg={isDemoOrg} onRostersChanged={() => fetchRosters(selectedOrg.id)} />
+      case 'practices':
+        return <PracticesPage key={selectedRoster?.id} org={selectedOrg} roster={selectedRoster} isDemoOrg={isDemoOrg}
+          openPracticeId={openPracticeId} onOpened={() => setOpenPracticeId(null)} />
       case 'tryouts':
         return <TryoutsPage org={selectedOrg} session={session} isDemoOrg={isDemoOrg} />
       case 'gamesheet':
@@ -217,6 +238,14 @@ function MainShell({ session, accessStatus, onExitDemo }) {
       />
 
       {toast && <div style={s.toast}>✓ {toast}</div>}
+
+      {nextPractice && currentApp !== 'practices' && currentApp !== 'gamesheet' && (
+        <button style={s.practiceBanner}
+          onClick={() => { setOpenPracticeId(nextPractice.id); setCurrentApp('practices') }}>
+          🔔 {formatPracticeDate(nextPractice.practice_date)} practice ·{' '}
+          {nextPractice.reminders.filter(r => !r.done).map(r => r.text).join(' · ')}
+        </button>
+      )}
 
       {/* Top Bar */}
       <header style={s.header}>
@@ -286,6 +315,12 @@ const styles = {
     color: 'rgba(255,152,0,0.95)', fontFamily: "'Barlow Condensed', sans-serif",
     fontSize: '12px', fontWeight: '800', textAlign: 'center',
     padding: '7px 16px', letterSpacing: '0.5px', textTransform: 'uppercase',
+  },
+  practiceBanner: {
+    background: 'rgba(240,165,0,0.1)', border: 'none', borderBottom: '1px solid rgba(240,165,0,0.3)',
+    color: '#f0a500', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '13px', fontWeight: '700',
+    textAlign: 'center', padding: '7px 16px', letterSpacing: '0.5px', cursor: 'pointer',
+    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%'
   },
   toast: {
     position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',

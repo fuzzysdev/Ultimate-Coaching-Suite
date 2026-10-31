@@ -19,8 +19,12 @@ export async function flushPendingWrites() {
         ;({ error } = await supabase.from(item.table).insert(item.data))
       } else if (item.method === 'upsert') {
         ;({ error } = await supabase.from(item.table).upsert(item.data, { onConflict: item.conflict || 'id' }))
+      } else if (item.method === 'delete') {
+        ;({ error } = await supabase.from(item.table).delete().match(item.match))
+      } else if (item.method === 'rpc') {
+        ;({ error } = await supabase.rpc(item.fn, item.args))
       }
-      if (!error) offlineStore.dequeue(item.key)
+      if (!error) offlineStore.dequeue(item.key, item.ts)
     } catch { /* leave in queue — will retry */ }
   }
 }
@@ -50,9 +54,18 @@ export function useOnlineStatus() {
     // Flush any queued writes left over from a previous offline session
     if (navigator.onLine) flushPendingWrites()
 
+    // Weak signal never fires 'online'/'offline' — retry the queue periodically too
+    const timer = setInterval(async () => {
+      if (flushing.current || offlineStore.getQueue().length === 0) return
+      flushing.current = true
+      await flushPendingWrites()
+      flushing.current = false
+    }, 30000)
+
     return () => {
       window.removeEventListener('online', goOnline)
       window.removeEventListener('offline', goOffline)
+      clearInterval(timer)
     }
   }, [])
 

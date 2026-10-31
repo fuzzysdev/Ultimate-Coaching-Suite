@@ -4,12 +4,14 @@
  * Cache keys:   ucs_cache_{key}
  * Queue key:    ucs_pending
  *
- * Queue items: { key, table, method, match, data, ts }
- *   key    – dedupe ID (e.g. "tryout_rankings_<id>")
- *   table  – Supabase table name
- *   method – 'update' | 'insert'
- *   match  – object passed to .match() for update ops
- *   data   – payload
+ * Queue items: { key, table, method, match, data, conflict, fn, args, ts }
+ *   key      – dedupe ID (e.g. "tryout_rankings_<id>")
+ *   table    – Supabase table name
+ *   method   – 'update' | 'insert' | 'upsert' | 'delete' | 'rpc'
+ *   match    – object passed to .match() for update/delete ops
+ *   data     – payload
+ *   conflict – onConflict column(s) for upsert (default 'id')
+ *   fn, args – function name + args for rpc ops
  *   ts     – timestamp (ms) of last write
  */
 
@@ -52,9 +54,11 @@ export const offlineStore = {
     } catch { return [] }
   },
 
-  dequeue(key) {
+  /** Remove an entry. Pass ts to remove only that exact write — a newer write
+   *  queued under the same key while the old one was in flight is kept. */
+  dequeue(key, ts) {
     try {
-      const q = this.getQueue().filter(x => x.key !== key)
+      const q = this.getQueue().filter(x => x.key !== key || (ts !== undefined && x.ts !== ts))
       localStorage.setItem(P + 'pending', JSON.stringify(q))
     } catch { }
   },
