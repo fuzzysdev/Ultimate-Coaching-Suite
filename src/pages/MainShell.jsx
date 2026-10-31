@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { offlineStore } from '../lib/offlineStore'
 import UserProfileModal from '../Components/UserProfileModal'
 import SubscriptionBanner from '../Components/SubscriptionBanner'
 import OnboardingModal from '../Components/OnboardingModal'
@@ -52,17 +53,26 @@ function MainShell({ session, accessStatus, onExitDemo }) {
   }
 
   const fetchOrganizations = async () => {
+    const cacheKey = `orgs_${session.user.id}`
     try {
       setLoadingOrgs(true)
       const { data, error } = await supabase
         .from('user_organizations')
         .select('organization_id, organizations(id, name)')
         .eq('user_id', session.user.id)
-      if (error) throw error
 
-      let orgs = data.map(row => row.organizations).filter(Boolean)
+      let orgs
+      if (error) {
+        // Offline / timed out — open with the last known orgs so the game sheet still works
+        const cached = offlineStore.getCache(cacheKey)
+        if (!cached) throw error
+        console.warn('fetchOrganizations: using cached orgs', error)
+        orgs = cached
+      } else {
+        orgs = data.map(row => row.organizations).filter(Boolean)
+      }
 
-      if (orgs.length === 0) {
+      if (!error && orgs.length === 0) {
         await autoJoinDemoOrg()
         const { data: retry } = await supabase
           .from('user_organizations')
@@ -72,6 +82,7 @@ function MainShell({ session, accessStatus, onExitDemo }) {
       }
 
       setOrganizations(orgs)
+      if (!error) offlineStore.setCache(cacheKey, orgs)
       // If the user has any non-demo org they are a returning user — suppress onboarding
       // even if localStorage was cleared (e.g. iOS PWA storage purge, app reinstall).
       const hasRealOrg = orgs.some(o => o.id !== DEMO_ORG_ID)
@@ -92,12 +103,15 @@ function MainShell({ session, accessStatus, onExitDemo }) {
   }
 
   const fetchRosters = async (orgId) => {
-    const { data } = await supabase
+    const cacheKey = `rosters_${orgId}`
+    const { data, error } = await supabase
       .from('rosters')
       .select('id, name, age_group, gender_type')
       .eq('organization_id', orgId)
       .order('name')
-    const rosterList = data || []
+    if (error) console.warn('fetchRosters: using cached rosters', error)
+    else offlineStore.setCache(cacheKey, data || [])
+    const rosterList = (error ? offlineStore.getCache(cacheKey) : data) || []
     setRosters(rosterList)
     const savedRosterId = localStorage.getItem(`selectedRoster_${session.user.id}`)
     const savedRoster = savedRosterId && rosterList.find(r => r.id === savedRosterId)

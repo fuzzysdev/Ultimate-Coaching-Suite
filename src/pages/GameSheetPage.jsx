@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { enqueuePendingPoint, dequeuePendingPoint, getPendingPoints, clearPendingPoints } from '../lib/offlineStore'
+import { offlineStore, enqueuePendingPoint, dequeuePendingPoint, getPendingPoints, clearPendingPoints } from '../lib/offlineStore'
 import GameSetupDialog from '../Components/GameSetupDialog'
 import GameEndDialog from '../Components/GameEndDialog'
 import GoalAssistModal from '../Components/GoalAssistModal'
@@ -22,6 +22,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   const [showEndDialog,      setShowEndDialog]      = useState(false)
   const [savingEnd,          setSavingEnd]          = useState(false)
   const [endError,           setEndError]           = useState(null)
+  const [openError,          setOpenError]          = useState(null)
   const [points,             setPoints]             = useState([])
   const [lines,              setLines]              = useState({})
   const [ourTO,              setOurTO]              = useState(0)
@@ -120,10 +121,11 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     if (!game?.id || game.id === 'demo-game') return
     const linesSerial = {}
     Object.entries(lines).forEach(([k, s]) => { linesSerial[k] = [...s] })
+    // points is kept so the game can be reopened from a cold start with no connection
     localStorage.setItem(`ucs_game_${game.id}`, JSON.stringify({
-      lines: linesSerial, playerStatus, halftimeAfterPoint, gameStartTime, gameEndTime
+      lines: linesSerial, playerStatus, halftimeAfterPoint, gameStartTime, gameEndTime, points
     }))
-  }, [game?.id, lines, playerStatus, halftimeAfterPoint, gameStartTime, gameEndTime])
+  }, [game?.id, lines, playerStatus, halftimeAfterPoint, gameStartTime, gameEndTime, points])
 
   useEffect(() => {
     if (!roster?.id) return
@@ -169,24 +171,30 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   const fetchPlayers = async () => {
     if (!roster?.id) return
     setLoadingPlayers(true)
-    const { data } = await supabase
+    const cacheKey = `players_${roster.id}`
+    const { data, error } = await supabase
       .from('players').select('id, name, gender, position, o_d_line, sort_order')
       .eq('roster_id', roster.id)
       .order('sort_order', { ascending: true, nullsFirst: false })
       .order('name')
-    setPlayers(data || [])
+    if (error) console.warn('fetchPlayers: using cached players', error)
+    else offlineStore.setCache(cacheKey, data || [])
+    setPlayers((error ? offlineStore.getCache(cacheKey) : data) || [])
     setLoadingPlayers(false)
   }
 
   const fetchAllGames = async () => {
     if (!roster?.id) return
-    const { data } = await supabase
+    const cacheKey = `games_${roster.id}`
+    const { data, error } = await supabase
       .from('games')
       .select('id, opponent, our_score, their_score, created_at, status, first_gender, starting_action, direction, line_size, our_timeouts_used, their_timeouts_used')
       .eq('roster_id', roster.id)
       .in('status', ['active', 'completed'])
       .order('created_at', { ascending: false })
-    const all = data || []
+    if (error) console.warn('fetchAllGames: using cached games', error)
+    else offlineStore.setCache(cacheKey, data || [])
+    const all = (error ? offlineStore.getCache(cacheKey) : data) || []
     const active = all.filter(g => g.status === 'active')
     setActiveGames(active)
     setCompletedGames(all.filter(g => g.status === 'completed'))
@@ -222,6 +230,42 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
         }
         return
       }
+
+      // Cold start with no connection — reopen from the locally saved copy of this game.
+      // Its points already include anything still in the pending queue.
+      const saved = (() => { try { return JSON.parse(localStorage.getItem(`ucs_game_${g.id}`)) } catch { return null } })()
+      if (saved?.points) {
+        console.warn('openActiveGame: offline — restoring from local copy', gpFetchError)
+        const savedLines = {}
+        Object.entries(saved.lines || {}).forEach(([k, arr]) => { savedLines[k] = new Set(arr) })
+        setGame(g)
+        setSetup({
+          opponent: g.opponent, firstGender: g.first_gender, startingAction: g.starting_action,
+          direction: g.direction, lineSize: g.line_size,
+        })
+        setPoints(saved.points)
+        setLines(savedLines)
+        setPlayerStatus(saved.playerStatus || {})
+        setHalftimeAfterPoint(saved.halftimeAfterPoint ?? null)
+        if (saved.gameStartTime) setGameStartTime(saved.gameStartTime)
+        if (saved.gameEndTime) setGameEndTime(saved.gameEndTime)
+        setOurTO(g.our_timeouts_used || 0)
+        setTheirTO(g.their_timeouts_used || 0)
+        if (activeGameKey) localStorage.setItem(activeGameKey, g.id)
+        scrollToCurrent()
+        if (showBanner) {
+          setResumeBanner({ nextPt: saved.points.length + 1, gender: getGenderForPoint(saved.points.length, g.first_gender), recovered: 0 })
+          setTimeout(() => setResumeBanner(null), 4500)
+        }
+        return
+      }
+
+      // No DB data and no local copy: opening now would show a wrong score and give new
+      // points numbers that collide with ones already in the DB.
+      console.error('openActiveGame: no connection and no local copy', gpFetchError)
+      setOpenError('Could not load this game — no connection. Try again when you have signal.')
+      setTimeout(() => setOpenError(null), 5000)
+      return
     }
 
     // Re-insert any points committed locally but lost before reaching the DB
@@ -808,6 +852,8 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
             <p style={S.emptySub}>Select a roster first.</p>
           )}
 
+          {openError && <div style={S.openError}>{openError}</div>}
+
           {/* Active Games */}
           {activeGames.length > 0 && (
             <div style={{ marginBottom: 24 }}>
@@ -1235,6 +1281,12 @@ const S = {
   emptySub: {
     fontFamily: "'Barlow Condensed', sans-serif", fontSize: '13px', color: '#4a5068',
     textAlign: 'center', maxWidth: '280px', margin: 0,
+  },
+  openError: {
+    margin: '0 0 16px', padding: '10px 14px', borderRadius: '8px',
+    background: 'rgba(255,77,109,0.1)', border: '1px solid rgba(255,77,109,0.3)',
+    color: '#ff4d6d', fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: '14px', fontWeight: '600',
   },
   newGameBtn: {
     background: '#00e5a0', color: '#0f1117', border: 'none',

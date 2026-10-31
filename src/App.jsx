@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { supabase } from './lib/supabase'
+import { supabase, getStoredSession } from './lib/supabase'
 import ScoreboardPage from './pages/ScoreboardPage'
 import LoginPage from './pages/LoginPage'
 import LandingPage from './pages/LandingPage'
@@ -9,6 +9,18 @@ import ResetPasswordPage from './pages/ResetPasswordPage'
 import SuperAdminPage from './pages/SuperAdminPage'
 import PaywallPage from './pages/PaywallPage'
 import OrgBillingPage from './pages/OrgBillingPage'
+
+// Last confirmed access status per user — lets the app open offline.
+// Trusted for 14 days; RLS still guards all data, this only decides which screen shows.
+const ACCESS_CACHE_PREFIX = 'ucs_access_'
+const ACCESS_CACHE_MAX_AGE = 14 * 24 * 60 * 60 * 1000
+
+function getCachedAccess(userId) {
+  try {
+    const c = JSON.parse(localStorage.getItem(ACCESS_CACHE_PREFIX + userId) || 'null')
+    return c && Date.now() - c.ts < ACCESS_CACHE_MAX_AGE ? c.status : null
+  } catch { return null }
+}
 
 function App() {
   const [session,      setSession]      = useState(null)
@@ -23,13 +35,19 @@ function App() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
+      // Offline with an expired token → fall back to the stored session (see getStoredSession)
+      setSession(session || getStoredSession())
       setLoading(false)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true)
         else if (event === 'USER_UPDATED') setRecoveryMode(false)
+        // INITIAL_SESSION is null in the same offline case — don't bounce to the login page
+        if (!session && event === 'INITIAL_SESSION') {
+          const stored = getStoredSession()
+          if (stored) { setSession(stored); return }
+        }
         setSession(session)
         // TOKEN_REFRESHED fires silently in the background — skip re-checking
         // access to avoid unmounting MainShell and losing active game state.
@@ -84,11 +102,13 @@ function App() {
       if (error) {
         console.error('Access check error:', error)
         // Network/timeout errors must not override a valid existing status.
-        // A user who had access a moment ago still has access; only fall back
-        // to 'denied' if we've never successfully checked (accessStatus is null).
-        setAccessStatus(prev => prev ?? 'denied')
+        // A user who had access a moment ago still has access; on a cold start
+        // offline, use the last confirmed status. Only fall back to 'denied'
+        // if we've never successfully checked.
+        setAccessStatus(prev => prev ?? getCachedAccess(userId) ?? 'denied')
       } else {
         setAccessStatus(data)
+        try { localStorage.setItem(ACCESS_CACHE_PREFIX + userId, JSON.stringify({ status: data, ts: Date.now() })) } catch {}
       }
     } finally {
       setCheckingAccess(false)
