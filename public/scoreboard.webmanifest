@@ -2,6 +2,7 @@
   "name": "UCS Scoreboard",
   "short_name": "UCS Scoreboard",
   "description": "Ultimate Coaching Suite — Live Scoreboard",
+  "id": "/scoreboard",
   "start_url": "/scoreboard",
   "scope": "/scoreboard",
   "display": "standalone",

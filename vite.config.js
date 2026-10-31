@@ -3,7 +3,22 @@ import { resolve } from 'path'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-const APP_VERSION = '1.5.26'
+const APP_VERSION = '1.5.27'
+
+// vite-plugin-pwa injects the coaching-suite manifest link into EVERY html entry.
+// scoreboard.html has its own manifest, so strip the injected one — otherwise
+// "Add to Home Screen" on /scoreboard can install the coaching suite.
+const scoreboardOwnManifest = () => ({
+  name: 'scoreboard-own-manifest',
+  enforce: 'post',
+  transformIndexHtml: {
+    order: 'post',
+    handler(html, ctx) {
+      if (!ctx.filename.replace(/\\/g, '/').endsWith('/scoreboard.html')) return html
+      return html.replace(/<link rel="manifest" href="\/manifest\.webmanifest">/g, '')
+    },
+  },
+})
 
 export default defineConfig(({ command }) => ({
   define: {
@@ -23,6 +38,7 @@ export default defineConfig(({ command }) => ({
   },
   plugins: [
     react(),
+    scoreboardOwnManifest(),
     VitePWA({
       registerType: 'autoUpdate',
       devOptions: {
@@ -31,8 +47,21 @@ export default defineConfig(({ command }) => ({
       workbox: {
         skipWaiting: true,
         clientsClaim: true,
-        // Cache Google Fonts so the app keeps its look with no connection
+        // The SPA fallback serves index.html (coaching-suite manifest + title) for every
+        // navigation. Keep /scoreboard out of it so it always gets scoreboard.html.
+        navigateFallbackDenylist: [/^\/scoreboard/],
         runtimeCaching: [
+          // Scoreboard page: network first, cached copy when offline
+          {
+            urlPattern: ({ request, url }) => request.mode === 'navigate' && url.pathname.startsWith('/scoreboard'),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'scoreboard-page',
+              networkTimeoutSeconds: 4,
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+          // Cache Google Fonts so the app keeps its look with no connection
           {
             urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
             handler: 'CacheFirst',
@@ -51,6 +80,7 @@ export default defineConfig(({ command }) => ({
         version: APP_VERSION,
         theme_color: '#0f1117',
         background_color: '#0f1117',
+        id: '/',
         start_url: '/',
         display: 'standalone',
         orientation: 'any',
@@ -60,6 +90,8 @@ export default defineConfig(({ command }) => ({
           { src: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png', purpose: 'any' }
         ]
       }
-    })
+    }),
+    // Must come after VitePWA — both hooks run at order: 'post', in plugin order
+    scoreboardOwnManifest(),
   ]
 }))
