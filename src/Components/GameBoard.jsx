@@ -13,12 +13,13 @@ export const clearBoard = (gameId) => { try { localStorage.removeItem(boardKey(g
 
 const FIELD_L = 100, FIELD_W = 37, EZ = 18, BRICK = 18
 const MID_Y = FIELD_W / 2
+// Extra space below the field is the sideline where pieces start
 const VIEWS = {
-  full: { x: -3, y: -3, w: 106, h: 43 },
-  half: { x: 47, y: -3, w: 56,  h: 43 },
+  full: { x: -3, y: -3, w: 106, h: 48 },
+  half: { x: 47, y: -3, w: 56,  h: 46 },
 }
-// Opening vertical stack, attacking the right-hand end zone
-const STACK = { full: { x: 34, gap: 8, step: 4 }, half: { x: 54, gap: 6, step: 3.5 } }
+// Starting row on the sideline: offence, then disc, then defence
+const BENCH = { full: { x: 10, y: 41.5, step: 4.4 }, half: { x: 50, y: 40, step: 2.4 } }
 const COLORS = ['#ffd23f', '#ffffff', '#0f1117', '#ff4d6d', '#4d9fff', '#ff9800', '#c77dff']
 const TOOLS = [
   { id: 'pen',   label: '✎ Draw' },
@@ -33,15 +34,13 @@ const round = (v) => Math.round(v * 100) / 100
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 
 function defaultBoard(view) {
-  const r = unit(view)
-  const { x, gap, step } = STACK[view]
+  const { x, y, step } = BENCH[view]
   const pieces = []
   for (let n = 1; n <= 7; n++) {
-    const px = n === 1 ? x : x + gap + (n - 2) * step
-    pieces.push({ id: `o${n}`, kind: 'o', n, x: px, y: MID_Y })
-    pieces.push({ id: `d${n}`, kind: 'd', n, x: px, y: round(MID_Y - r * 2.2) })
+    pieces.push({ id: `o${n}`, kind: 'o', n, x: round(x + (n - 1) * step), y })
+    pieces.push({ id: `d${n}`, kind: 'd', n, x: round(x + (n + 7) * step), y })
   }
-  pieces.push({ id: 'disc', kind: 'disc', x: round(x + r * 1.3), y: round(MID_Y + r * 1.3) })
+  pieces.push({ id: 'disc', kind: 'disc', x: round(x + 7 * step), y })
   return { pieces, strokes: [] }
 }
 
