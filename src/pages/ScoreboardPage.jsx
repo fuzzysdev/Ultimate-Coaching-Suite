@@ -384,13 +384,16 @@ function EditModal({ config, onSave, onClose }) {
   const [team2Name,  setTeam2Name]  = useState(config.team2Name)
   const [team1Color, setTeam1Color] = useState(config.team1Color)
   const [team2Color, setTeam2Color] = useState(config.team2Color)
+  const [firstGender, setFirstGender] = useState(config.firstGender)
+  const [t1Action,    setT1Action]    = useState(config.t1Action)
   const colorConflict = team1Color.toLowerCase() === team2Color.toLowerCase()
+  const isRuleA = config.genderMode === 'mixed' && config.genderRule === 'A'
 
   return (
     <Overlay>
       <ModalCard>
         <div style={{ fontSize: 18, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, color: '#e8eaf0', marginBottom: 20, alignSelf: 'flex-start' }}>
-          Edit Teams
+          Edit Game
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', marginBottom: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -405,12 +408,33 @@ function EditModal({ config, onSave, onClose }) {
           </div>
           {colorConflict && <div style={SS.warn}>Teams must have different colours</div>}
         </div>
-        <div style={{ display: 'flex', gap: 10, width: '100%', marginTop: 16 }}>
+
+        {isRuleA && (
+          <div style={{ width: '100%', marginTop: 18 }}>
+            <div style={SS.sectionLabel}>First Point Ratio</div>
+            <BtnGroup>
+              <Toggle active={firstGender === 'm'} onClick={() => setFirstGender('m')}>♂  4M, 3F</Toggle>
+              <Toggle active={firstGender === 'f'} onClick={() => setFirstGender('f')}>♀  4F, 3M</Toggle>
+            </BtnGroup>
+          </div>
+        )}
+
+        <div style={{ width: '100%', marginTop: 18 }}>
+          <div style={SS.sectionLabel}>{(team1Name.trim() || config.team1Name)} Started By</div>
+          <BtnGroup>
+            <Toggle active={t1Action === 'pull'}    onClick={() => setT1Action('pull')}>Pulling</Toggle>
+            <Toggle active={t1Action === 'receive'} onClick={() => setT1Action('receive')}>Receiving</Toggle>
+          </BtnGroup>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, width: '100%', marginTop: 20 }}>
           <button
             onClick={() => onSave({
               team1Name:  team1Name.trim()  || config.team1Name,
               team2Name:  team2Name.trim()  || config.team2Name,
               team1Color, team2Color,
+              ...(isRuleA ? { firstGender } : {}),
+              t1Action,
             })}
             disabled={colorConflict}
             style={{ ...primaryBtn, flex: 1, opacity: colorConflict ? 0.4 : 1 }}
@@ -833,6 +857,15 @@ export default function ScoreboardPage() {
   }
 
   const handleEditSave = (updates) => {
+    // Correcting who pulled first: the scorer pulls after every point, so this only
+    // changes the live pull before the first point. Once points exist, fix the first
+    // point's record so undoing back to 0-0 restores the right puller.
+    if (updates.t1Action && updates.t1Action !== config.t1Action) {
+      const firstPuller = updates.t1Action === 'pull' ? 'team1' : 'team2'
+      if (points.length === 0) setPullTeam(firstPuller)
+      else setPoints(prev => [{ ...prev[0], pullTeamBefore: firstPuller }, ...prev.slice(1)])
+    }
+    // firstGender needs no extra work: the current point's ratio is derived from it
     setConfig(prev => ({ ...prev, ...updates }))
     setEditOpen(false)
   }

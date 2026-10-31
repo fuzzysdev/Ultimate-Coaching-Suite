@@ -3,7 +3,7 @@ import { resolve } from 'path'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-const APP_VERSION = '1.5.29'
+const APP_VERSION = '1.5.30'
 
 // vite-plugin-pwa injects the coaching-suite manifest link into EVERY html entry.
 // scoreboard.html has its own manifest, so strip the injected one — otherwise
