@@ -5,6 +5,7 @@ import GameSetupDialog from '../Components/GameSetupDialog'
 import GameEndDialog from '../Components/GameEndDialog'
 import GoalAssistModal from '../Components/GoalAssistModal'
 import GameInfoModal from '../Components/GameInfoModal'
+import GameBoard, { clearBoard } from '../Components/GameBoard'
 import { SectionRow, PlayerRow, EmptySection } from '../Components/GameGridRows'
 import ReorderGroup from '../Components/GameReorderPanel'
 import { useGameLiveMode } from '../hooks/useGameLiveMode'
@@ -32,6 +33,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   const [completedGames,     setCompletedGames]     = useState([])
   const [activeGames,        setActiveGames]        = useState([])
   const [showGameInfo,       setShowGameInfo]       = useState(false)
+  const [showBoard,          setShowBoard]          = useState(false)
   const [halftimeAfterPoint, setHalftimeAfterPoint] = useState(null)
   const [gameStartTime,      setGameStartTime]      = useState('')
   const [gameEndTime,        setGameEndTime]        = useState('')
@@ -596,6 +598,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   const handleSaveEnd = async (ratings) => {
     if (!game) return
     if (isDemoOrg) {
+      clearBoard(game?.id); setShowBoard(false)
       setShowEndDialog(false); setGame(null); setSetup(null); setPoints([]); setLines({})
       setPlayerStatus({}); setHalftimeAfterPoint(null); setGameStartTime(''); setGameEndTime('')
       return
@@ -622,7 +625,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       if (endErr) throw endErr
       unsubscribe()
       setLiveMode(false)
-      if (game?.id) { localStorage.removeItem(`ucs_game_${game.id}`); clearPendingPoints(game.id) }
+      if (game?.id) { localStorage.removeItem(`ucs_game_${game.id}`); clearPendingPoints(game.id); clearBoard(game.id) }
       if (activeGameKey) localStorage.removeItem(activeGameKey)
       noSleepRef.current = false; setNoSleep(false)
       wakeLockRef.current?.release(); wakeLockRef.current = null
@@ -640,6 +643,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     // game_points and spirit_ratings are removed by ON DELETE CASCADE
     await supabase.from('games').delete().eq('id', gameId)
     localStorage.removeItem(`ucs_game_${gameId}`)
+    clearBoard(gameId)
     setCompletedGames(prev => prev.filter(g => g.id !== gameId))
     setPendingDelete(null)
   }
@@ -647,6 +651,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   const handleAbandonGame = async () => {
     if (!game) return
     if (isDemoOrg) {
+      clearBoard(game.id); setShowBoard(false)
       setShowGameInfo(false)
       setGame(null); setSetup(null); setPoints([]); setLines({})
       setOurTO(0); setTheirTO(0); setPlayerStatus({})
@@ -657,6 +662,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     await supabase.from('games').delete().eq('id', game.id)
     localStorage.removeItem(`ucs_game_${game.id}`)
     clearPendingPoints(game.id)
+    clearBoard(game.id)
     if (activeGameKey) localStorage.removeItem(activeGameKey)
     noSleepRef.current = false; setNoSleep(false)
     wakeLockRef.current?.release(); wakeLockRef.current = null
@@ -963,6 +969,9 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
           onClose={() => setShowGameInfo(false)}
         />
       )}
+      {showBoard && game?.id && !readOnly && (
+        <GameBoard gameId={game.id} onClose={() => setShowBoard(false)} />
+      )}
 
       {resumeBanner && (
         <div style={S.resumeBanner}>
@@ -1066,6 +1075,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
           <button onClick={undoPoint} style={S.btnUndo} disabled={points.length === 0}>↩ Undo</button>
           <button onClick={() => setShowEndDialog(true)} style={S.btnEnd}>End</button>
           <button onClick={enterReorder} style={S.btnReorder} title="Reorder players">⇅</button>
+          <button onClick={() => setShowBoard(true)} style={S.btnReorder} title="Drawboard">✎</button>
           <button onClick={toggleLiveMode} style={{ ...S.btnLive, ...(liveMode ? S.btnLiveOn : {}) }}
             title={liveMode ? 'Turn off live sync' : 'Turn on live sync'}>⊙</button>
           {wakeLockSupported && (
