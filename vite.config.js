@@ -3,7 +3,7 @@ import { resolve } from 'path'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-const APP_VERSION = '1.5.23'
+const APP_VERSION = '1.5.24'
 
 export default defineConfig(({ command }) => ({
   define: {
