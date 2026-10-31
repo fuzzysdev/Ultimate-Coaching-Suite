@@ -106,7 +106,7 @@ function TryoutSessionPage({ tryout, org, session, onBack, isDemoOrg }) {
         setNotes(notesMap)
         syncRankings(cached, rankings, cutIndex, bubbleIndex)
       } else {
-        setError(err.message)
+        console.error(err); setError("Could not load tryout.")
       }
     } finally {
       setLoading(false)
@@ -191,7 +191,7 @@ function TryoutSessionPage({ tryout, org, session, onBack, isDemoOrg }) {
       setNewName('')
       setNewGrade('')
     } catch (err) {
-      setError(err.message)
+      console.error(err); setError("Could not add player.")
     } finally {
       setSaving(false)
     }
@@ -226,7 +226,7 @@ function TryoutSessionPage({ tryout, org, session, onBack, isDemoOrg }) {
       .from('tryout_players')
       .update({ name: editName.trim(), grade: editGrade || null, gender: editGender })
       .eq('id', editingPlayer.id)
-    if (error) return setError(error.message)
+    if (error) { console.error(error); return setError("Could not save changes.") }
 
     const newPlayers = players.map(p =>
       p.id === editingPlayer.id ? { ...p, name: editName.trim(), grade: editGrade, gender: editGender } : p
@@ -361,7 +361,7 @@ function TryoutSessionPage({ tryout, org, session, onBack, isDemoOrg }) {
       setSelectedRoster('')
       setPromoteSuccess(`${p.name} added to roster!`)
     } catch (err) {
-      setError(err.message)
+      console.error(err); setError("Could not add player to roster.")
     } finally {
       setPromoting(false)
     }

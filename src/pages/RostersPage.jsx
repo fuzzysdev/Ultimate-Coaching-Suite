@@ -27,7 +27,7 @@ function RostersPage({ org, session, onRostersChanged, isDemoOrg }) {
       if (error) throw error
       setRosters(data || [])
     } catch (err) {
-      setError(err.message)
+      console.error(err); setError("Could not load rosters.")
     } finally {
       setLoading(false)
     }

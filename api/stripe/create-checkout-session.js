@@ -11,6 +11,19 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
+// Relative in-app path only — blocks "//evil.com" and "@evil.com" open redirects
+const isSafePath = (p) => typeof p === 'string' && /^\/(?![/\\])[A-Za-z0-9\-._~/?=&%]*$/.test(p)
+
+async function isOrgAdmin(userId, orgId) {
+  const { data } = await supabase
+    .from('user_organizations')
+    .select('role')
+    .eq('user_id', userId)
+    .eq('organization_id', orgId)
+    .maybeSingle()
+  return data?.role === 'admin'
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
@@ -26,10 +39,27 @@ export default async function handler(req, res) {
   const { priceId, orgId, successPath = '/?checkout=success', cancelPath = '/' } = req.body
 
   if (!priceId) return res.status(400).json({ error: 'priceId is required' })
+  if (!isSafePath(successPath) || !isSafePath(cancelPath)) {
+    return res.status(400).json({ error: 'Invalid redirect path' })
+  }
 
   const baseUrl = process.env.APP_URL || `https://${req.headers.host}`
 
   try {
+    // Only org admins may start a subscription for an org
+    if (orgId && !(await isOrgAdmin(user.id, orgId))) {
+      return res.status(403).json({ error: 'Forbidden' })
+    }
+
+    // Price must be active, and an org checkout must use an org price.
+    // (Org prices WITHOUT an orgId are still allowed — PaywallPage sells team
+    // plans that way today — but the webhook can't attach those to an org.)
+    const price = await stripe.prices.retrieve(priceId)
+    const priceType = price.metadata?.subscription_type || 'individual'
+    if (!price.active || (orgId && priceType !== 'org')) {
+      return res.status(400).json({ error: 'Invalid price' })
+    }
+
     // Build metadata so the webhook knows which user/org this is for
     const metadata = { user_id: user.id }
     if (orgId) metadata.org_id = orgId

@@ -33,7 +33,7 @@ function SpiritRatingRow({ label, value, onChange }) {
   )
 }
 
-function GameEndDialog({ ourScore, theirScore, opponent, onSave, onCancel, saving }) {
+function GameEndDialog({ ourScore, theirScore, opponent, onSave, onCancel, saving, error }) {
   const [ratings, setRatings] = useState({
     rules_knowledge: null,
     fouls_contact:   null,
@@ -103,6 +103,8 @@ function GameEndDialog({ ourScore, theirScore, opponent, onSave, onCancel, savin
           )}
         </div>
 
+        {error && <div style={s.error}>{error}</div>}
+
         <div style={s.actions}>
           <button type="button" onClick={onCancel} style={s.cancelBtn}>
             Back to Game
@@ -122,6 +124,12 @@ function GameEndDialog({ ourScore, theirScore, opponent, onSave, onCancel, savin
 }
 
 const styles = {
+  error: {
+    margin: '16px 24px 0', padding: '10px 14px', borderRadius: '8px',
+    background: 'rgba(255,77,109,0.1)', border: '1px solid rgba(255,77,109,0.3)',
+    color: '#ff4d6d', fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: '14px', fontWeight: '600'
+  },
   overlay: {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 600,
     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'

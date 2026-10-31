@@ -100,7 +100,7 @@ export default function OrgBillingPage({ session, onAccessChange }) {
       window.location.href = json.url
     } catch (err) {
       console.error(err)
-      setError(err.message || 'Failed to open billing portal.')
+      setError('Could not open billing portal. Please try again.')
       setActionLoading(null)
     }
   }

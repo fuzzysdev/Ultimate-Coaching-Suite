@@ -21,6 +21,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   const [showSetup,          setShowSetup]          = useState(false)
   const [showEndDialog,      setShowEndDialog]      = useState(false)
   const [savingEnd,          setSavingEnd]          = useState(false)
+  const [endError,           setEndError]           = useState(null)
   const [points,             setPoints]             = useState([])
   const [lines,              setLines]              = useState({})
   const [ourTO,              setOurTO]              = useState(0)
@@ -45,8 +46,12 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   const gridRef         = useRef(null)
   const wakeLockRef     = useRef(null)
   const noSleepRef      = useRef(false) // mirrors noSleep for use in event listeners
-  const forceRefreshRef = useRef(null)
   const gameRef         = useRef(null)
+  // In-flight game_points inserts by point_number — undo waits on these so its
+  // delete can't reach the DB before the insert it's meant to reverse.
+  const inFlightRef     = useRef({})
+  // Game id whose spirit ratings are already saved — a retried End Game skips re-inserting them.
+  const spiritSavedRef  = useRef(null)
   const openActiveRef   = useRef(null)
   // Authoritative score state — updated synchronously inside commitPoint/adjustScore so
   // rapid back-to-back commits never see stale React state (fixes race condition).
@@ -126,6 +131,41 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     fetchAllGames()
   }, [roster?.id])
 
+  // ── Pending point sync ────────────────────────────────────────────────────
+  // ignoreDuplicates → ON CONFLICT DO NOTHING: a point that already landed (but whose
+  // response was lost) counts as synced, and no UPDATE policy is needed.
+  const upsertPoint = (pt) => supabase.from('game_points')
+    .upsert(pt, { onConflict: 'game_id,point_number', ignoreDuplicates: true })
+
+  // Push locally-queued points to the DB. Returns how many are still unsynced.
+  const syncPendingPoints = async (gameId) => {
+    const pending = getPendingPoints(gameId).sort((a, b) => a.point_number - b.point_number)
+    for (const pt of pending) {
+      // Skip points undone since we read the queue
+      if (!getPendingPoints(gameId).some(p => p.point_number === pt.point_number)) continue
+      const { error } = await upsertPoint(pt)
+      if (error) { console.error('pending point sync:', error); break } // likely offline — retry later
+      dequeuePendingPoint(gameId, pt.point_number)
+    }
+    const remaining = getPendingPoints(gameId).length
+    if (pending.length > 0 && remaining === 0) {
+      const { ourScore: o, theirScore: t } = nextStateRef.current
+      supabase.from('games').update({ our_score: o, their_score: t }).eq('id', gameId)
+        .then(({ error }) => { if (error) console.error('score sync:', error) })
+    }
+    return remaining
+  }
+
+  // Retry unsynced points on reconnect and every 15s while a live game is open
+  useEffect(() => {
+    if (!game?.id || game.id === 'demo-game' || game.status === 'completed' || isDemoOrg) return
+    const gameId = game.id
+    const retry = () => { if (getPendingPoints(gameId).length > 0) syncPendingPoints(gameId) }
+    window.addEventListener('online', retry)
+    const timer = setInterval(retry, 15000)
+    return () => { window.removeEventListener('online', retry); clearInterval(timer) }
+  }, [game?.id, game?.status, isDemoOrg])
+
   const fetchPlayers = async () => {
     if (!roster?.id) return
     setLoadingPlayers(true)
@@ -194,8 +234,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     // connection. Unconfirmed ones stay in the queue and get re-attempted next open.
     let dbConfirmedCount = 0
     for (const pt of toReinsert) {
-      const { error } = await supabase.from('game_points')
-        .upsert(pt, { onConflict: 'game_id,point_number' })
+      const { error } = await upsertPoint(pt)
       if (!error) { dbConfirmedCount++; dequeuePendingPoint(g.id, pt.point_number) }
     }
 
@@ -431,10 +470,11 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       assist_player_id: assistPlayerId || null,
     }
     enqueuePendingPoint(game.id, ptPayload)
-    supabase.from('game_points').insert(ptPayload)
+    const gameId = game.id
+    inFlightRef.current[nextPointNum] = upsertPoint(ptPayload)
       .then(({ error }) => {
         if (error) console.error('game_points insert:', error)
-        else dequeuePendingPoint(game.id, nextPointNum)
+        else dequeuePendingPoint(gameId, nextPointNum)
       })
     supabase.from('games').update({ our_score: newOur, their_score: newTheir })
       .eq('id', game.id)
@@ -446,18 +486,24 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     if (isDemoOrg) { setPoints(prev => prev.slice(0, -1)); return }
     let lastIdx
     if (liveMode) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('game_points').select('point_number')
         .eq('game_id', game.id).order('point_number', { ascending: false }).limit(1).maybeSingle()
-      if (!data) return
-      lastIdx = data.point_number
+      if (error) lastIdx = points.length - 1   // offline — fall back to local state
+      else if (!data) return
+      else lastIdx = data.point_number
     } else {
       lastIdx = points.length - 1
     }
     setPoints(prev => prev.filter((_, i) => i !== lastIdx))
-    supabase.from('game_points').delete()
-      .eq('game_id', game.id).eq('point_number', lastIdx)
-      .then(({ error }) => { if (error) console.error('undo delete:', error) })
+    // Drop from the local queue so an unsynced point can't be resurrected on wake
+    dequeuePendingPoint(game.id, lastIdx)
+    const gameId = game.id
+    ;(inFlightRef.current[lastIdx] || Promise.resolve()).then(() =>
+      supabase.from('game_points').delete()
+        .eq('game_id', gameId).eq('point_number', lastIdx)
+        .then(({ error }) => { if (error) console.error('undo delete:', error) })
+    )
     const prevOur   = lastIdx > 0 ? points[lastIdx - 1].ourScoreAfter   : 0
     const prevTheir = lastIdx > 0 ? points[lastIdx - 1].theirScoreAfter : 0
     supabase.from('games').update({ our_score: prevOur, their_score: prevTheir })
@@ -511,9 +557,25 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       return
     }
     setSavingEnd(true)
+    setEndError(null)
     try {
-      await supabase.from('spirit_ratings').insert({ game_id: game.id, ...ratings })
-      await supabase.from('games').update({ status: 'completed', ended_at: new Date().toISOString(), live_mode: false }).eq('id', game.id)
+      // Never complete a game while points exist only on this device — clearing the
+      // local queue below would lose them for good.
+      const unsynced = await syncPendingPoints(game.id)
+      if (unsynced > 0) {
+        setEndError(`${unsynced} point${unsynced > 1 ? 's' : ''} not synced yet. Check your connection and try again.`)
+        return
+      }
+      if (spiritSavedRef.current !== game.id) {
+        const { error: spiritError } = await supabase.from('spirit_ratings').insert({ game_id: game.id, ...ratings })
+        if (spiritError) throw spiritError
+        spiritSavedRef.current = game.id
+      }
+      const { error: endErr } = await supabase.from('games').update({
+        status: 'completed', ended_at: new Date().toISOString(), live_mode: false,
+        our_score: ourScore, their_score: theirScore,
+      }).eq('id', game.id)
+      if (endErr) throw endErr
       unsubscribe()
       setLiveMode(false)
       if (game?.id) { localStorage.removeItem(`ucs_game_${game.id}`); clearPendingPoints(game.id) }
@@ -523,13 +585,15 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       setShowEndDialog(false); setGame(null); setSetup(null); setPoints([]); setLines({})
       setPlayerStatus({}); setHalftimeAfterPoint(null); setGameStartTime(''); setGameEndTime('')
       fetchAllGames()
+    } catch (err) {
+      console.error('end game:', err)
+      setEndError('Could not save. Check your connection and try again.')
     } finally { setSavingEnd(false) }
   }
 
   const handleDeleteGame = async (gameId) => {
     if (isDemoOrg) { setPendingDelete(null); return }
-    await supabase.from('game_points').delete().eq('game_id', gameId)
-    await supabase.from('spirit_ratings').delete().eq('game_id', gameId)
+    // game_points and spirit_ratings are removed by ON DELETE CASCADE
     await supabase.from('games').delete().eq('id', gameId)
     localStorage.removeItem(`ucs_game_${gameId}`)
     setCompletedGames(prev => prev.filter(g => g.id !== gameId))
@@ -545,8 +609,7 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
       setHalftimeAfterPoint(null); setGameStartTime(''); setGameEndTime('')
       return
     }
-    await supabase.from('game_points').delete().eq('game_id', game.id)
-    await supabase.from('spirit_ratings').delete().eq('game_id', game.id)
+    // game_points and spirit_ratings are removed by ON DELETE CASCADE
     await supabase.from('games').delete().eq('id', game.id)
     localStorage.removeItem(`ucs_game_${game.id}`)
     clearPendingPoints(game.id)
@@ -630,14 +693,19 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
         gender: curGender, scoredBy: team,
         ourScoreAfter: newOur, theirScoreAfter: newThem,
       }])
-      supabase.from('game_points')
-        .upsert({
-          game_id: game.id, point_number: nextPointNum, gender: curGender,
-          scored_by: team, player_ids: [],
-          our_score_after: newOur, their_score_after: newThem,
-          goal_scorer_id: null, assist_player_id: null,
-        }, { onConflict: 'game_id,point_number' })
-        .then(({ error }) => { if (error) console.error('adjustScore insert:', error) })
+      const ptPayload = {
+        game_id: game.id, point_number: nextPointNum, gender: curGender,
+        scored_by: team, player_ids: [],
+        our_score_after: newOur, their_score_after: newThem,
+        goal_scorer_id: null, assist_player_id: null,
+      }
+      enqueuePendingPoint(game.id, ptPayload)
+      const gameId = game.id
+      inFlightRef.current[nextPointNum] = upsertPoint(ptPayload)
+        .then(({ error }) => {
+          if (error) console.error('adjustScore insert:', error)
+          else dequeuePendingPoint(gameId, nextPointNum)
+        })
       supabase.from('games').update({ our_score: newOur, their_score: newThem })
         .eq('id', game.id)
         .then(({ error }) => { if (error) console.error('adjustScore games:', error) })
@@ -718,9 +786,8 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
   }
 
   // Keep stale-closure-safe refs current every render
-  gameRef.current         = game
-  forceRefreshRef.current = forceRefreshGame
-  openActiveRef.current   = openActiveGame
+  gameRef.current       = game
+  openActiveRef.current = openActiveGame
 
   // ── Games list (landing page) ───────────────────────────────────────────────
   if (!setup) {
@@ -826,7 +893,8 @@ export default function GameSheetPage({ org, roster, isDemoOrg }) {
     <div style={S.container}>
       {showEndDialog && (
         <GameEndDialog ourScore={ourScore} theirScore={theirScore} opponent={setup.opponent}
-          onSave={handleSaveEnd} onCancel={() => setShowEndDialog(false)} saving={savingEnd} />
+          onSave={handleSaveEnd} onCancel={() => { setShowEndDialog(false); setEndError(null) }}
+          saving={savingEnd} error={endError} />
       )}
       {pendingPoint && (
         <GoalAssistModal

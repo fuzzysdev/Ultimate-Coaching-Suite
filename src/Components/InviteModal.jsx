@@ -35,7 +35,8 @@ function InviteModal({ org, userId, onJoined, onClose, isDemoOrg }) {
       if (error) throw error
       setGeneratedCode(code)
     } catch (err) {
-      setError(err.message)
+      console.error(err)
+      setError('Could not generate invite code. Please try again.')
     } finally {
       setGenerating(false)
     }
@@ -54,53 +55,20 @@ function InviteModal({ org, userId, onJoined, onClose, isDemoOrg }) {
     setJoining(true)
 
     try {
-      const code = joinCode.trim().toUpperCase()
+      // Validation, membership insert and marking the code used all happen
+      // server-side in one transaction (non-members can't read invites).
+      const { data, error: redeemError } = await supabase
+        .rpc('redeem_invite', { p_code: joinCode.trim().toUpperCase() })
+      if (redeemError) throw redeemError
 
-      const { data: invite, error: fetchError } = await supabase
-  .from('org_invites')
-  .select('id, organization_id, expires_at, used_by')
-  .eq('code', code)
-  .is('used_by', null)
-  .single()
-
-if (fetchError || !invite) throw new Error('Invalid or already used invite code.')
-
-// Fetch the org name separately
-const { data: orgData } = await supabase
-  .from('organizations')
-  .select('name')
-  .eq('id', invite.organization_id)
-  .single()
-
-const orgName = orgData?.name || 'Unknown Organization'
-
-      if (new Date(invite.expires_at) < new Date()) {
-        throw new Error('This invite code has expired.')
-      }
-
-      const { data: existing } = await supabase
-        .from('user_organizations')
-        .select('user_id')
-        .eq('user_id', userId)
-        .eq('organization_id', invite.organization_id)
-        .single()
-
-      if (existing) throw new Error('You are already a member of this organization.')
-
-      const { error: joinError } = await supabase
-        .from('user_organizations')
-        .insert({ user_id: userId, organization_id: invite.organization_id, role: 'member' })
-
-      if (joinError) throw joinError
-
-      await supabase
-        .from('org_invites')
-        .update({ used_by: userId, used_at: new Date().toISOString() })
-        .eq('id', invite.id)
-
-      onJoined(orgName)
+      onJoined(data?.org_name || 'organization')
     } catch (err) {
-      setError(err.message)
+      console.error(err)
+      const msg = err?.message || ''
+      if (msg.includes('INVALID_CODE'))        setError('Invalid or already used invite code.')
+      else if (msg.includes('EXPIRED_CODE'))   setError('This invite code has expired.')
+      else if (msg.includes('ALREADY_MEMBER')) setError('You are already a member of this organization.')
+      else                                     setError('Could not join. Please try again.')
     } finally {
       setJoining(false)
     }

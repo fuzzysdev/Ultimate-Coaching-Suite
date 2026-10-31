@@ -41,7 +41,7 @@ function TryoutsPage({ org, session, isDemoOrg }) {
     } catch (err) {
       const cached = offlineStore.getCache(cacheKey)
       if (cached) { setTryouts(cached); setError('Offline — showing cached data') }
-      else setError(err.message)
+      else { console.error(err); setError("Could not load tryouts.") }
     } finally {
       setLoading(false)
     }
@@ -67,7 +67,7 @@ function TryoutsPage({ org, session, isDemoOrg }) {
       setShowForm(false)
       fetchTryouts()
     } catch (err) {
-      setError(err.message)
+      console.error(err); setError("Could not create tryout.")
     } finally {
       setSaving(false)
     }
@@ -78,7 +78,7 @@ function TryoutsPage({ org, session, isDemoOrg }) {
     await supabase.from('tryout_players').delete().eq('tryout_id', deletingTryout.id)
     const { error } = await supabase.from('tryouts').delete().eq('id', deletingTryout.id)
     setDeletingTryout(null)
-    if (error) return setError(error.message)
+    if (error) { console.error(error); return setError("Could not delete tryout.") }
     fetchTryouts()
   }
 

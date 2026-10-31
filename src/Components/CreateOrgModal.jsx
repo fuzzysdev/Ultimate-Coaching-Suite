@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-function CreateOrgModal({ userId, onCreated, onClose }) {
+function CreateOrgModal({ onCreated, onClose }) {
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -12,21 +12,15 @@ function CreateOrgModal({ userId, onCreated, onClose }) {
     setError(null)
     setSaving(true)
     try {
+      // RPC creates the org and the caller's admin membership in one transaction
       const { data: org, error: orgError } = await supabase
-        .from('organizations')
-        .insert({ name: name.trim() })
-        .select()
-        .single()
+        .rpc('create_organization', { p_name: name.trim() })
       if (orgError) throw orgError
-
-      const { error: memberError } = await supabase
-        .from('user_organizations')
-        .insert({ user_id: userId, organization_id: org.id, role: 'admin' })
-      if (memberError) throw memberError
 
       onCreated(org)
     } catch (err) {
-      setError(err.message)
+      console.error(err)
+      setError('Could not create organization. Please try again.')
     } finally {
       setSaving(false)
     }

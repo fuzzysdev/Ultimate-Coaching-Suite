@@ -23,7 +23,7 @@ function RosterPage({ roster, onBack, isDemoOrg }) {
       if (error) throw error
       setPlayers(data || [])
     } catch (err) {
-      setError(err.message)
+      console.error(err); setError("Could not load players.")
     } finally {
       setLoading(false)
     }

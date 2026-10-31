@@ -42,7 +42,8 @@ function PlayerModal({ player, roster, onSave, onClose, isDemoOrg }) {
     try {
       await onSave({ name: name.trim(), grade: isAdult ? '' : grade, gender, position, oDLine })
     } catch (err) {
-      setError(err.message)
+      console.error(err)
+      setError("Could not save player. Please try again.")
     } finally {
       setSaving(false)
     }
