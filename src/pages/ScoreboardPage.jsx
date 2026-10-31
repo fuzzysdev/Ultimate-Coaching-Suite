@@ -243,7 +243,17 @@ function HistoryRow({ game, onDelete }) {
           </span>
         </div>
         {spiritTotal !== null && (
-          <div style={SS.historySpirit}>Spirit: {spiritTotal} / 20</div>
+          <div style={SS.historySpiritBox}>
+            <div style={SS.historySpirit}>
+              Spirit: <span style={{ color: '#00e5a0', fontWeight: 900 }}>{spiritTotal} / 20</span>
+            </div>
+            {SPIRIT_CATEGORIES.map(cat => (
+              <div key={cat.key} style={SS.historySpiritRow}>
+                <span>{cat.label}</span>
+                <span style={SS.historySpiritVal}>{game.spiritRatings[cat.key] ?? '–'}</span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
       <button onClick={onDelete} style={SS.historyDelete}>✕</button>
@@ -995,6 +1005,16 @@ const SS = {
   },
   historySpirit: {
     fontSize: 11, color: '#7a8099', marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5,
+  },
+  historySpiritBox: {
+    marginTop: 6, paddingTop: 6, borderTop: '1px solid #2a2f42', maxWidth: 280,
+  },
+  historySpiritRow: {
+    display: 'flex', justifyContent: 'space-between', gap: 12,
+    fontSize: 12, color: '#c8ccd8', marginTop: 3,
+  },
+  historySpiritVal: {
+    fontWeight: 900, color: '#e8eaf0', minWidth: 14, textAlign: 'right',
   },
   historyDelete: {
     background: 'none', border: 'none', color: '#4a5068',
