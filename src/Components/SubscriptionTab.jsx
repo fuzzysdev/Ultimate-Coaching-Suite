@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 // Shown in UserProfileModal as a "Subscription" tab.
 // Displays current plan status and a "Manage Billing" button.
 
-export default function SubscriptionTab({ session, accessStatus }) {
+export default function SubscriptionTab({ session, accessStatus, trialEnd, onViewPlans }) {
   const [subscription, setSubscription] = useState(null)
   const [loading,      setLoading]      = useState(true)
   const [portalLoading, setPortalLoading] = useState(false)
@@ -16,8 +16,9 @@ export default function SubscriptionTab({ session, accessStatus }) {
     setLoading(true)
     const { data } = await supabase
       .from('subscriptions')
-      .select('status, subscription_type, seat_count, current_period_end, trial_end, cancel_at_period_end')
+      .select('status, current_period_end, trial_end, cancel_at_period_end')
       .eq('user_id', session.user.id)
+      .not('stripe_subscription_id', 'is', null)
       .in('status', ['active', 'trialing', 'past_due'])
       .order('created_at', { ascending: false })
       .limit(1)
@@ -78,8 +79,12 @@ export default function SubscriptionTab({ session, accessStatus }) {
   if (!subscription) {
     return (
       <div style={S.card}>
-        <p style={S.muted}>No active subscription found.</p>
-        <button onClick={() => { window.location.href = '/' }} style={S.ghostBtn}>
+        <p style={S.muted}>
+          {accessStatus === 'trial'
+            ? `Free trial${trialEnd ? ` — ends ${formatDate(trialEnd)}` : ''}`
+            : 'Free plan — rosters and tryouts.'}
+        </p>
+        <button onClick={onViewPlans} style={S.ghostBtn}>
           View Plans
         </button>
       </div>

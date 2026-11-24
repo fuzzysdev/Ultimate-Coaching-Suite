@@ -40,7 +40,7 @@ const FEATURES = [
 ]
 
 const GETTING_STARTED = [
-  { n: '1', title: 'Sign up', desc: 'Create your account — individual coaches get a 30-day free trial.' },
+  { n: '1', title: 'Sign up', desc: 'Create your free account. Rosters and tryouts are always free.' },
   { n: '2', title: 'Create a roster', desc: 'Name your team and add your players. Import from a spreadsheet or add one by one.' },
   { n: '3', title: 'Add players', desc: 'Fill in names, positions, gender, and grade. Takes about 30 seconds per player.' },
   { n: '4', title: 'Run a game', desc: 'Open Game Sheet, set up the match, and start tracking points live from your phone.' },
@@ -117,9 +117,9 @@ export default function HowItWorksPage({ onSignIn, onSignUp }) {
       {/* ── CTA ── */}
       <section style={s.cta}>
         <h2 style={s.ctaTitle}>Ready to get started?</h2>
-        <p style={s.ctaSub}>Free 30-day trial for individual coaches. No credit card required to start.</p>
+        <p style={s.ctaSub}>Rosters and tryouts are free. Try every coach feature free for 14 days, no credit card required.</p>
         {onSignUp && (
-          <button onClick={onSignUp} style={s.ctaBtn}>Start Free Trial</button>
+          <button onClick={onSignUp} style={s.ctaBtn}>Get Started Free</button>
         )}
       </section>
 

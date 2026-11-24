@@ -24,32 +24,25 @@ const FEATURES = [
 ]
 
 const STEPS = [
-  { n: '1', label: 'Sign up for free', desc: '30-day trial, no card required' },
+  { n: '1', label: 'Sign up for free', desc: 'Rosters and tryouts, no card required' },
   { n: '2', label: 'Build your roster', desc: 'Add players in seconds' },
   { n: '3', label: 'Run your first game', desc: 'Live scoring, right from your phone' },
 ]
 
 const PLANS = [
   {
-    label: 'Individual Coach',
+    label: 'Free',
+    price: '$0',
+    note: 'No card required',
+    features: ['Rosters', 'Tryouts', 'Invite your coaching staff'],
+    cta: 'Get Started',
+  },
+  {
+    label: 'Coach',
     price: '$10/mo',
-    note: 'or $100/yr — save 20%',
-    features: ['Full access to all tools', '1 coach license', '30-day free trial'],
-    cta: 'Start Free Trial',
-  },
-  {
-    label: '5-Coach Team',
-    price: '$400/yr',
-    note: '$80/coach/yr',
-    features: ['Full access to all tools', '5 coach licenses', 'Admin seat management'],
-    cta: 'Get Started',
-  },
-  {
-    label: '10-Coach Team',
-    price: '$600/yr',
-    note: '$60/coach/yr',
-    features: ['Full access to all tools', '10 coach licenses', 'Admin seat management'],
-    cta: 'Get Started',
+    note: 'or $100/yr — 2 months free',
+    features: ['Everything in Free', 'Game sheet and drawboard', 'Practice planner and drills', 'Attendance and stats', '14-day free trial, no card'],
+    cta: 'Start Free',
   },
 ]
 
@@ -81,7 +74,7 @@ export default function LandingPage({ onSignIn, onSignUp }) {
           for ultimate frisbee coaches who care about the details.
         </p>
         <div style={s.heroCtas}>
-          <button onClick={onSignUp} style={s.ctaPrimary}>Get Started — Free Trial</button>
+          <button onClick={onSignUp} style={s.ctaPrimary}>Get Started Free</button>
           <button onClick={onSignIn} style={s.ctaSecondary}>Sign In</button>
         </div>
       </section>
@@ -123,7 +116,7 @@ export default function LandingPage({ onSignIn, onSignUp }) {
       {/* ── Pricing ── */}
       <section style={s.section}>
         <h2 style={s.sectionTitle}>Simple, transparent pricing</h2>
-        <p style={s.sectionSub}>Individual coaches and org teams both get full access to every feature.</p>
+        <p style={s.sectionSub}>Rosters and tryouts are free. One price per coach for everything else.</p>
         <div style={s.pricingGrid}>
           {PLANS.map(plan => (
             <div key={plan.label} style={{ ...s.pricingCard, ...(plan.highlight ? s.pricingCardHL : {}) }}>

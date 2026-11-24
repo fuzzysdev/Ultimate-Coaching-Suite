@@ -23,7 +23,7 @@ const STEPS = [
   },
   {
     title: "You're all set!",
-    body: "You're currently in the demo org — explore all the features freely. When you're ready to track your real team, subscribe to get started. Enjoy!",
+    body: "New accounts start in the demo org — explore everything freely. When you're ready, create your own organization from your profile. Rosters and tryouts are free, and you can try every coach feature free for 14 days.",
     icon: '✅',
   },
 ]

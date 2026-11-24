@@ -4,7 +4,7 @@ import InviteModal from './InviteModal'
 import CreateOrgModal from './CreateOrgModal'
 import SubscriptionTab from './SubscriptionTab'
 
-function UserProfileModal({ session, selectedOrg, accessStatus, onClose, onRostersRefresh, onSignOut, onOrgChanged, onSelectOrg }) {
+function UserProfileModal({ session, selectedOrg, accessStatus, trialEnd, onViewPlans, onClose, onRostersRefresh, onSignOut, onOrgChanged, onSelectOrg }) {
   const [activeTab,       setActiveTab]       = useState('profile')
   const [orgMemberships,  setOrgMemberships]  = useState([])
   const [loadingOrgs,     setLoadingOrgs]     = useState(true)
@@ -107,7 +107,8 @@ function UserProfileModal({ session, selectedOrg, accessStatus, onClose, onRoste
             onCreated={(org) => {
               setShowCreateOrg(false)
               fetchMemberships()
-              onOrgChanged(`Created ${org.name}!`)
+              onOrgChanged()
+              onSelectOrg(org) // land in the new org, not the demo
             }}
           />
         )}
@@ -246,7 +247,7 @@ function UserProfileModal({ session, selectedOrg, accessStatus, onClose, onRoste
         {/* ── SUBSCRIPTION TAB ── */}
         {activeTab === 'subscription' && (
           <div style={s.section}>
-            <SubscriptionTab session={session} accessStatus={accessStatus} />
+            <SubscriptionTab session={session} accessStatus={accessStatus} trialEnd={trialEnd} onViewPlans={onViewPlans} />
           </div>
         )}
 

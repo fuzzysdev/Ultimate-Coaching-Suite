@@ -1,6 +1,7 @@
 // api/stripe/create-checkout-session.js
 // Creates a Stripe Checkout Session and returns the redirect URL.
-// Called by PaywallPage and OrgBillingPage when a user clicks "Subscribe".
+// Called by UpgradePanel. Each coach pays individually; the free trial is handled
+// in-app (start_trial RPC), so Stripe billing starts right away.
 
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
@@ -14,15 +15,11 @@ const supabase = createClient(
 // Relative in-app path only — blocks "//evil.com" and "@evil.com" open redirects
 const isSafePath = (p) => typeof p === 'string' && /^\/(?![/\\])[A-Za-z0-9\-._~/?=&%]*$/.test(p)
 
-async function isOrgAdmin(userId, orgId) {
-  const { data } = await supabase
-    .from('user_organizations')
-    .select('role')
-    .eq('user_id', userId)
-    .eq('organization_id', orgId)
-    .maybeSingle()
-  return data?.role === 'admin'
-}
+// Keep in sync with COACH_PRICES in src/lib/access.js
+const ALLOWED_PRICES = [
+  'price_1TS5FkJ80Mm4TIdPwNsrpbpN', // $10/mo
+  'price_1TS5FlJ80Mm4TIdPWOwbCdK7', // $100/yr
+]
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -36,9 +33,9 @@ export default async function handler(req, res) {
   const { data: { user }, error: authError } = await supabase.auth.getUser(token)
   if (authError || !user) return res.status(401).json({ error: 'Unauthorized' })
 
-  const { priceId, orgId, successPath = '/?checkout=success', cancelPath = '/' } = req.body
+  const { priceId, successPath = '/?checkout=success', cancelPath = '/' } = req.body
 
-  if (!priceId) return res.status(400).json({ error: 'priceId is required' })
+  if (!ALLOWED_PRICES.includes(priceId)) return res.status(400).json({ error: 'Invalid price' })
   if (!isSafePath(successPath) || !isSafePath(cancelPath)) {
     return res.status(400).json({ error: 'Invalid redirect path' })
   }
@@ -46,41 +43,26 @@ export default async function handler(req, res) {
   const baseUrl = process.env.APP_URL || `https://${req.headers.host}`
 
   try {
-    // Only org admins may start a subscription for an org
-    if (orgId && !(await isOrgAdmin(user.id, orgId))) {
-      return res.status(403).json({ error: 'Forbidden' })
-    }
+    // Never create a second subscription for the same coach
+    const { data: existing, error: existingError } = await supabase
+      .from('subscriptions')
+      .select('id')
+      .eq('user_id', user.id)
+      .not('stripe_subscription_id', 'is', null)
+      .in('status', ['active', 'trialing', 'past_due'])
+      .limit(1)
+    if (existingError) throw existingError
+    if (existing.length > 0) return res.status(409).json({ error: 'Already subscribed' })
 
-    // Price must be active, and an org checkout must use an org price.
-    // (Org prices WITHOUT an orgId are still allowed — PaywallPage sells team
-    // plans that way today — but the webhook can't attach those to an org.)
-    const price = await stripe.prices.retrieve(priceId)
-    const priceType = price.metadata?.subscription_type || 'individual'
-    if (!price.active || (orgId && priceType !== 'org')) {
-      return res.status(400).json({ error: 'Invalid price' })
-    }
-
-    // Build metadata so the webhook knows which user/org this is for
     const metadata = { user_id: user.id }
-    if (orgId) metadata.org_id = orgId
 
-    // Look up existing customer ID to avoid duplicate Stripe customers
-    let customerId
-    if (orgId) {
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('stripe_customer_id')
-        .eq('id', orgId)
-        .single()
-      customerId = org?.stripe_customer_id || undefined
-    } else {
-      const { data: userStripe } = await supabase
-        .from('user_stripe')
-        .select('stripe_customer_id')
-        .eq('user_id', user.id)
-        .single()
-      customerId = userStripe?.stripe_customer_id || undefined
-    }
+    // Reuse the existing customer to avoid duplicate Stripe customers
+    const { data: userStripe } = await supabase
+      .from('user_stripe')
+      .select('stripe_customer_id')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    const customerId = userStripe?.stripe_customer_id
 
     const sessionParams = {
       mode: 'subscription',
@@ -96,20 +78,6 @@ export default async function handler(req, res) {
       sessionParams.customer = customerId
     } else {
       sessionParams.customer_email = user.email
-    }
-
-    // Apply 30-day trial only for new individual subscribers with no prior subscription
-    if (!orgId) {
-      const { data: existingSub } = await supabase
-        .from('subscriptions')
-        .select('id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .single()
-
-      if (!existingSub) {
-        sessionParams.subscription_data.trial_period_days = 30
-      }
     }
 
     const session = await stripe.checkout.sessions.create(sessionParams)

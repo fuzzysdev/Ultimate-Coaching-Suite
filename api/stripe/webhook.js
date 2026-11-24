@@ -108,26 +108,24 @@ async function handleCheckoutComplete(session) {
   })
 
   const price = subscription.items.data[0]?.price
-  const metadata = price?.metadata || {}
-  const subscriptionType = metadata.subscription_type || 'individual'
-  const seatCount = parseInt(metadata.seats || '1', 10)
   const lookupKey = price?.lookup_key || null
-
-  // Determine user_id and org_id from session metadata
   const userId = session.metadata?.user_id || null
-  const orgId = session.metadata?.org_id || null
   const customerId = session.customer
+
+  // Every subscription belongs to one coach. A retry can't add a missing user, so log and stop.
+  if (!userId) {
+    console.error('Checkout session without user_id:', session.id)
+    return
+  }
 
   // Upsert subscription row
   const { error: subError } = await supabase.from('subscriptions').upsert({
-    user_id: subscriptionType === 'individual' ? userId : null,
-    organization_id: subscriptionType === 'org' ? orgId : null,
+    user_id: userId,
     stripe_customer_id: customerId,
     stripe_subscription_id: subscription.id,
     stripe_price_id: price?.id,
     price_lookup_key: lookupKey,
-    subscription_type: subscriptionType,
-    seat_count: seatCount,
+    subscription_type: 'individual',
     status: subscription.status,
     ...periodOf(subscription),
     cancel_at_period_end: subscription.cancel_at_period_end,
@@ -137,49 +135,21 @@ async function handleCheckoutComplete(session) {
   check(subError, 'Subscription upsert error')
 
   // Store Stripe customer ID mapping
-  if (subscriptionType === 'individual' && userId) {
-    const { error } = await supabase.from('user_stripe').upsert(
-      { user_id: userId, stripe_customer_id: customerId },
-      { onConflict: 'user_id' }
-    )
-    check(error, 'user_stripe upsert error')
-  } else if (subscriptionType === 'org' && orgId) {
-    const { error } = await supabase.from('organizations')
-      .update({ stripe_customer_id: customerId })
-      .eq('id', orgId)
-    check(error, 'organizations customer update error')
-  }
-
-  // Auto-assign all org seats to existing members (up to seat_count)
-  if (subscriptionType === 'org' && orgId && seatCount > 0) {
-    const { data: members } = await supabase
-      .from('user_organizations')
-      .select('user_id')
-      .eq('organization_id', orgId)
-      .limit(seatCount)
-
-    const rows = (members || []).map(m => ({
-      organization_id: orgId, user_id: m.user_id, assigned_by: userId,
-    }))
-    if (rows.length > 0) {
-      const { error } = await supabase.from('org_seat_assignments')
-        .upsert(rows, { onConflict: 'organization_id,user_id' })
-      check(error, 'Seat assignment error')
-    }
-  }
+  const { error } = await supabase.from('user_stripe').upsert(
+    { user_id: userId, stripe_customer_id: customerId },
+    { onConflict: 'user_id' }
+  )
+  check(error, 'user_stripe upsert error')
 }
 
 async function handleSubscriptionUpdated(subscription) {
   const price = subscription.items?.data[0]?.price
-  const metadata = price?.metadata || {}
-  const seatCount = parseInt(metadata.seats || '1', 10)
 
   // update (not upsert): the row is created by checkout.session.completed, and
   // an upsert here could create an orphan row with no user/org if events arrive out of order.
   const { error } = await supabase.from('subscriptions').update({
     stripe_price_id: price?.id,
     price_lookup_key: price?.lookup_key || null,
-    seat_count: seatCount,
     status: subscription.status,
     ...periodOf(subscription),
     cancel_at_period_end: subscription.cancel_at_period_end,

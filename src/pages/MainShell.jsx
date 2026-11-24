@@ -4,6 +4,8 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { offlineStore } from '../lib/offlineStore'
 import UserProfileModal from '../Components/UserProfileModal'
 import SubscriptionBanner from '../Components/SubscriptionBanner'
+import UpgradePanel from '../Components/UpgradePanel'
+import { PAID_TABS, isPaidStatus } from '../lib/access'
 import OnboardingModal from '../Components/OnboardingModal'
 import RostersPage from './RostersPage'
 import PracticesPage from './PracticesPage'
@@ -27,7 +29,7 @@ const NAV_ITEMS = [
   { key: 'tournaments', label: 'Tournaments' },
 ]
 
-function MainShell({ session, accessStatus, onExitDemo }) {
+function MainShell({ session, accessStatus, onAccessChange }) {
   const [organizations,  setOrganizations]  = useState([])
   const [selectedOrg,    setSelectedOrg]    = useState(null)
   const [rosters,        setRosters]        = useState([])
@@ -39,9 +41,27 @@ function MainShell({ session, accessStatus, onExitDemo }) {
   const [showOnboarding, setShowOnboarding] = useState(!localStorage.getItem('ucs_onboarding_v1'))
   const [nextPractice,   setNextPractice]   = useState(null)
   const [openPracticeId, setOpenPracticeId] = useState(null)
+  const [trialEnd,       setTrialEnd]       = useState(undefined) // undefined = unknown, null = never used
+  const [heldTab,        setHeldTab]        = useState(null)
   const isOnline = useOnlineStatus()
 
   const isDemoOrg = DEMO_ORG_ID && selectedOrg?.id === DEMO_ORG_ID
+
+  const isPaid = isPaidStatus(accessStatus)
+  // A tab opened while paid stays open if access lapses — never lock a live game mid-point.
+  if (isPaid && heldTab !== currentApp) setHeldTab(currentApp)
+  const isLocked = (tab) => PAID_TABS.includes(tab) && !isPaid && !isDemoOrg && heldTab !== tab
+
+  const goTo = (tab) => {
+    if (tab === currentApp) return
+    setHeldTab(null)
+    setCurrentApp(tab)
+  }
+
+  useEffect(() => {
+    supabase.from('user_trials').select('trial_end').eq('user_id', session.user.id).maybeSingle()
+      .then(({ data, error }) => { if (!error) setTrialEnd(data?.trial_end ?? null) })
+  }, [accessStatus, session.user.id])
 
   useEffect(() => { fetchOrganizations() }, [])
   useEffect(() => { if (selectedOrg) fetchRosters(selectedOrg.id) }, [selectedOrg])
@@ -170,6 +190,10 @@ function MainShell({ session, accessStatus, onExitDemo }) {
   }
 
   const renderApp = () => {
+    if (currentApp === 'upgrade' || isLocked(currentApp)) {
+      return <UpgradePanel featureName={NAV_ITEMS.find(n => n.key === currentApp)?.label}
+        accessStatus={accessStatus} trialEnd={trialEnd} onAccessChange={onAccessChange} />
+    }
     if (!selectedOrg) {
       return (
         <div style={styles.noOrg}>
@@ -212,6 +236,8 @@ function MainShell({ session, accessStatus, onExitDemo }) {
           session={session}
           selectedOrg={selectedOrg}
           accessStatus={accessStatus}
+          trialEnd={trialEnd}
+          onViewPlans={() => { setShowProfileModal(false); goTo('upgrade') }}
           onClose={() => setShowProfileModal(false)}
           onRostersRefresh={() => fetchRosters(selectedOrg?.id)}
           onSignOut={handleLogout}
@@ -226,22 +252,24 @@ function MainShell({ session, accessStatus, onExitDemo }) {
         </div>
       )}
 
-      {isDemoOrg && accessStatus !== 'denied' && (
+      {isDemoOrg && (
         <div style={s.demoBanner}>
-          ⚡ DEMO MODE — Changes are not saved. Join a real org to track your team.
+          ⚡ DEMO MODE — Changes are not saved. Create or join an organization from your profile 🥏 — it's free.
         </div>
       )}
 
       <SubscriptionBanner
+        key={accessStatus}
         accessStatus={accessStatus}
-        onManageBilling={accessStatus === 'denied' && onExitDemo ? onExitDemo : () => setShowProfileModal(true)}
+        trialEnd={trialEnd}
+        onManageBilling={() => accessStatus === 'trial' ? goTo('upgrade') : setShowProfileModal(true)}
       />
 
       {toast && <div style={s.toast}>✓ {toast}</div>}
 
-      {nextPractice && currentApp !== 'practices' && currentApp !== 'gamesheet' && (
+      {nextPractice && (isPaid || isDemoOrg) && currentApp !== 'practices' && currentApp !== 'gamesheet' && (
         <button style={s.practiceBanner}
-          onClick={() => { setOpenPracticeId(nextPractice.id); setCurrentApp('practices') }}>
+          onClick={() => { setOpenPracticeId(nextPractice.id); goTo('practices') }}>
           🔔 {formatPracticeDate(nextPractice.practice_date)} practice ·{' '}
           {nextPractice.reminders.filter(r => !r.done).map(r => r.text).join(' · ')}
         </button>
@@ -287,9 +315,9 @@ function MainShell({ session, accessStatus, onExitDemo }) {
       {/* Nav Bar */}
       <nav style={s.nav}>
         {NAV_ITEMS.map(item => (
-          <button key={item.key} onClick={() => setCurrentApp(item.key)}
+          <button key={item.key} onClick={() => goTo(item.key)}
             style={{ ...s.navBtn, ...(currentApp === item.key ? s.navBtnActive : {}) }}>
-            {item.label}
+            {item.label}{isLocked(item.key) && ' 🔒'}
           </button>
         ))}
       </nav>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { supabase, getStoredSession } from './lib/supabase'
 import ScoreboardPage from './pages/ScoreboardPage'
 import LoginPage from './pages/LoginPage'
@@ -7,8 +7,7 @@ import HowItWorksPage from './pages/HowItWorksPage'
 import MainShell from './pages/MainShell'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import SuperAdminPage from './pages/SuperAdminPage'
-import PaywallPage from './pages/PaywallPage'
-import OrgBillingPage from './pages/OrgBillingPage'
+import { isPaidStatus } from './lib/access'
 
 // Last confirmed access status per user — lets the app open offline.
 // Trusted for 14 days; RLS still guards all data, this only decides which screen shows.
@@ -28,9 +27,9 @@ function App() {
   const [recoveryMode, setRecoveryMode] = useState(false)
   const [accessStatus, setAccessStatus] = useState(null)  // null | string
   const [checkingAccess, setCheckingAccess] = useState(false)
-  const [demoMode,     setDemoMode]     = useState(false)
   const [showLanding,  setShowLanding]  = useState(false)
   const [loginMode,    setLoginMode]    = useState('signin') // 'signin' | 'signup'
+  const returnedFromCheckout = useRef(new URLSearchParams(window.location.search).get('checkout') === 'success')
   const [pathname,     setPathname]     = useState(window.location.pathname)
 
   useEffect(() => {
@@ -71,29 +70,24 @@ function App() {
     }
   }, [session])
 
-  // Re-check access when connectivity is restored so a user stranded on
-  // PaywallPage due to a network error gets let back in automatically.
+  // Re-check access when connectivity is restored so a paying user
+  // shown the free tier due to a network error is unlocked automatically.
   useEffect(() => {
     const onOnline = () => {
-      if (session && accessStatus === 'denied') checkAccess(session.user.id)
+      if (session && !isPaidStatus(accessStatus)) checkAccess(session.user.id)
     }
     window.addEventListener('online', onOnline)
     return () => window.removeEventListener('online', onOnline)
   }, [session, accessStatus])
 
-  // On return from Stripe Checkout, re-poll access after a short delay
-  // to allow the webhook time to process
+  // On return from Stripe Checkout, re-check a few times while the webhook lands
+  const userId = session?.user?.id
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('checkout') === 'success' && session) {
-      const timer = setTimeout(() => {
-        setAccessStatus(null)  // triggers re-check via useEffect above
-      }, 2500)
-      // Clean the URL
-      window.history.replaceState({}, '', window.location.pathname)
-      return () => clearTimeout(timer)
-    }
-  }, [session])
+    if (!userId || !returnedFromCheckout.current) return
+    window.history.replaceState({}, '', window.location.pathname)
+    const timers = [2500, 6000, 12000, 25000].map(ms => setTimeout(() => checkAccess(userId), ms))
+    return () => timers.forEach(clearTimeout)
+  }, [userId])
 
   const checkAccess = async (userId) => {
     setCheckingAccess(true)
@@ -103,9 +97,9 @@ function App() {
         console.error('Access check error:', error)
         // Network/timeout errors must not override a valid existing status.
         // A user who had access a moment ago still has access; on a cold start
-        // offline, use the last confirmed status. Only fall back to 'denied'
+        // offline, use the last confirmed status. Only fall back to 'free'
         // if we've never successfully checked.
-        setAccessStatus(prev => prev ?? getCachedAccess(userId) ?? 'denied')
+        setAccessStatus(prev => prev ?? getCachedAccess(userId) ?? 'free')
       } else {
         setAccessStatus(data)
         try { localStorage.setItem(ACCESS_CACHE_PREFIX + userId, JSON.stringify({ status: data, ts: Date.now() })) } catch {}
@@ -152,23 +146,8 @@ function App() {
   // Keep showing the app during background re-checks to prevent MainShell unmount.
   if (!accessStatus) return <LoadingScreen />
 
-  // ── Route by access status ──
-  switch (accessStatus) {
-    case 'super_admin':
-      // Super admins get the full app; /superadmin is a separate route
-      return <MainShell session={session} accessStatus={accessStatus} />
-    case 'exempt':
-    case 'full':
-    case 'trial':
-    case 'past_due':
-      return <MainShell session={session} accessStatus={accessStatus} />
-    case 'org_admin_only':
-      return <OrgBillingPage session={session} onAccessChange={() => setAccessStatus(null)} />
-    case 'denied':
-    default:
-      if (demoMode) return <MainShell session={session} accessStatus={accessStatus} onExitDemo={() => setDemoMode(false)} />
-      return <PaywallPage session={session} onAccessChange={() => setAccessStatus(null)} onTryDemo={() => setDemoMode(true)} />
-  }
+  // Everyone gets the app; MainShell locks the paid tabs on the free tier.
+  return <MainShell session={session} accessStatus={accessStatus} onAccessChange={() => checkAccess(session.user.id)} />
 }
 
 function LoadingScreen() {

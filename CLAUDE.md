@@ -33,6 +33,7 @@ src/
   Components/
     PlayerModal.jsx       # Add/edit player
     RosterModal.jsx       # Add/edit roster
+    UpgradePanel.jsx      # Plan picker / trial start, shown in place of locked paid tabs
     InviteModal.jsx       # Generate/redeem org invite codes
     CreateOrgModal.jsx    # Create new organization
     ConfirmDialog.jsx     # Generic destructive-action confirm
@@ -49,6 +50,7 @@ src/
     DrillFormModal.jsx       # Create/edit drill, "Save as drill" from a block
   lib/
     supabase.js           # Supabase client (reads VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY)
+    access.js             # Paid tabs, access statuses, Stripe price IDs
     offlineStore.js       # localStorage cache + write queue (prefix: ucs_)
     practiceHelpers.js    # Block types, offline-safe practice/drill saves, attendance RPC helpers
     gameSheetHelpers.js   # Shared constants (NAME_W, COL_W, etc.) + pure helpers
@@ -123,6 +125,7 @@ src/
 | `game_points` | game_id, point_number, gender, scored_by, player_ids |
 | `spirit_ratings` | game_id, 5 integer scores |
 | `super_admins` | user_id |
+| `user_trials` | user_id, trial_end — one 14-day trial per user, written by `start_trial` RPC |
 
 Helper functions (SECURITY DEFINER): `is_org_member(org_id)`, `is_super_admin()`, `get_org_members(p_org_id)`.
 

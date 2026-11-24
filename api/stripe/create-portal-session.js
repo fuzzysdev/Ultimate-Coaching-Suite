@@ -1,6 +1,6 @@
 // api/stripe/create-portal-session.js
 // Creates a Stripe Customer Portal session and returns the redirect URL.
-// Called from SubscriptionTab and OrgBillingPage "Manage Billing" buttons.
+// Called from SubscriptionTab's "Manage Billing" button.
 
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
@@ -26,39 +26,17 @@ export default async function handler(req, res) {
   const { data: { user }, error: authError } = await supabase.auth.getUser(token)
   if (authError || !user) return res.status(401).json({ error: 'Unauthorized' })
 
-  const { orgId, returnPath = '/' } = req.body
+  const { returnPath = '/' } = req.body
   if (!isSafePath(returnPath)) return res.status(400).json({ error: 'Invalid redirect path' })
   const baseUrl = process.env.APP_URL || `https://${req.headers.host}`
 
   try {
-    let customerId
-
-    if (orgId) {
-      // Only org admins may manage an org's billing
-      const { data: membership } = await supabase
-        .from('user_organizations')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('organization_id', orgId)
-        .maybeSingle()
-      if (membership?.role !== 'admin') return res.status(403).json({ error: 'Forbidden' })
-
-      // Org billing portal
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('stripe_customer_id')
-        .eq('id', orgId)
-        .single()
-      customerId = org?.stripe_customer_id
-    } else {
-      // Individual billing portal
-      const { data: userStripe } = await supabase
-        .from('user_stripe')
-        .select('stripe_customer_id')
-        .eq('user_id', user.id)
-        .single()
-      customerId = userStripe?.stripe_customer_id
-    }
+    const { data: userStripe } = await supabase
+      .from('user_stripe')
+      .select('stripe_customer_id')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    const customerId = userStripe?.stripe_customer_id
 
     if (!customerId) {
       return res.status(404).json({ error: 'No billing account found. Subscribe first.' })

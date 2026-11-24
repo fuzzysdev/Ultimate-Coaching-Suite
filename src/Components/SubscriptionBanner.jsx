@@ -3,29 +3,12 @@ import { useState } from 'react'
 // Shown inside MainShell for 'trial' and 'past_due' access statuses.
 // Dismissed per-session via sessionStorage.
 
-export default function SubscriptionBanner({ accessStatus, subscription, onManageBilling }) {
+export default function SubscriptionBanner({ accessStatus, trialEnd, onManageBilling }) {
   const [dismissed, setDismissed] = useState(
     () => sessionStorage.getItem(`banner_dismissed_${accessStatus}`) === '1'
   )
 
   if (dismissed) return null
-
-  if (accessStatus === 'denied') {
-    return (
-      <div style={{ ...S.banner, ...S.demo }}>
-        <span style={S.msg}>Demo mode — exploring sample data only</span>
-        <div style={S.actions}>
-          <button onClick={onManageBilling} style={{ ...S.actionBtn, ...S.demoBtn }}>
-            See Plans
-          </button>
-          <button onClick={() => {
-            sessionStorage.setItem(`banner_dismissed_${accessStatus}`, '1')
-            setDismissed(true)
-          }} style={S.dismissBtn} aria-label="Dismiss">✕</button>
-        </div>
-      </div>
-    )
-  }
 
   if (accessStatus !== 'trial' && accessStatus !== 'past_due') return null
 
@@ -38,9 +21,8 @@ export default function SubscriptionBanner({ accessStatus, subscription, onManag
 
   let message = ''
   if (isTrial) {
-    if (subscription?.trial_end) {
-      const trialEnd = new Date(subscription.trial_end)
-      const daysLeft = Math.ceil((trialEnd - Date.now()) / (1000 * 60 * 60 * 24))
+    if (trialEnd) {
+      const daysLeft = Math.ceil((new Date(trialEnd) - Date.now()) / (1000 * 60 * 60 * 24))
       message = daysLeft > 1
         ? `Free trial — ${daysLeft} days left`
         : daysLeft === 1
@@ -91,12 +73,6 @@ const S = {
     fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5,
     cursor: 'pointer',
   },
-  demo: {
-    background: 'rgba(0,229,160,0.08)',
-    borderBottom: '1px solid rgba(0,229,160,0.2)',
-    color: '#7a8099',
-  },
-  demoBtn: { background: '#00e5a0', color: '#0f1117' },
   trialBtn: { background: '#4d9fff', color: '#0f1117' },
   pastDueBtn: { background: '#ff4d6d', color: '#fff' },
   dismissBtn: {
